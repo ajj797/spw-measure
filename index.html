@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-XGrCIMGXXyz7qVkg/LuO94JwFHZ4dyST2nnBw5d5Kq0='; style-src 'sha256-kCpbIY7Ezw4+TNYBPjuQ06KLbdjTFdIVXEgNoFzUrTA='; img-src 'self'; manifest-src 'self'; connect-src 'none'; worker-src 'self'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1b3a57">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -87,6 +88,17 @@ h3.fail { color: var(--fail); }
 .pt { border-left: 4px solid #dbe3ec; padding-left: 10px; margin: 6px 0; }
 .exp { font-size: 15px; font-weight: 600; } .exp.exported { color: var(--pass); } .exp.changed { color: var(--warn); }
 .exp.never { color: var(--muted); }
+/* v1.43: guided diagonal cards */
+.guided .say { font-size: 19px; margin: 6px 0; font-weight: 600; }
+.sketch .wall.hot { stroke: var(--brand); stroke-width: 8; } .sketch .wall.dim { stroke: #c4cad2; }
+.sketch .diag.card { stroke-width: 3.5; stroke-dasharray: none; stroke: #c98a00; }
+.sketch .diag.card.pass { stroke: var(--pass); } .sketch .diag.card.fail { stroke: var(--fail); }
+.sketch .pt { fill: #fff; stroke: var(--ink); stroke-width: 2.5; }
+.sketch .ptlab { font-size: 13px; font-weight: 800; text-anchor: middle; fill: var(--ink); }
+.small-btn { min-height: 44px; font-size: 16px; width: 100%; margin: 4px 0; }
+.legs { border-left: 4px solid #dbe3ec; padding-left: 10px; }
+.modal { position: fixed; inset: 0; z-index: 20; background: #0008; display: flex; align-items: center; padding: 16px; }
+.modal .card { width: 100%; max-width: 520px; margin: 0 auto; }
 </style>
 </head>
 <body>
@@ -440,7 +452,8 @@ function run(data) {
       flag("measure_corner_impossible", "fail", `corner ${c.name}: a diagonal of ${ftin(c.diagonal)} can't join legs of ` +
         `${ftin(c.leg_a)} and ${ftin(c.leg_b)}: re-measure`, subject);
     } else if (c.status === "unchecked") {
-      flag("measure_corner_unchecked", "info", `corner ${c.name} is unchecked: 90° assumed (no corner diagonal)`, subject);
+      // v1.43 (AJ): a warn: an unchecked corner can hide a 1" length error (§9.51)
+      flag("measure_corner_unchecked", "warn", `corner ${c.name} is unchecked: 90° assumed (no corner diagonal)`, subject);
     } else if (closed && k === corners.length - 1) {
       let text = `corner ${c.name} closes the room at ${hund(c.angle)}°`;
       if (c.diagonal_angle !== null) {
@@ -733,12 +746,19 @@ function computed(result) {
 
 /**
  * How many more readings would verify every wall (v1.41, shown on the
- * diagonals and review screens): the fewest of the suggested diagonals that
+ * diagonals and review screens): one corner diagonal per unchecked corner
+ * (v1.43), plus the fewest of the suggested diagonals that
  * together verify every unverified wall (each verifies the walls it moves at
  * least 0.5 per unit of their length), plus one for each wall none of them
  * can verify. 0 when every wall is verified.
  */
 function readingsNeeded(result) {
+  // v1.43: each unchecked corner needs its corner diagonal (a closing corner of a closed room doesn't)
+  const corners = result.corners.filter((c) => c.status === "unchecked").length;
+  return corners + diagonalsNeeded(result);
+}
+
+function diagonalsNeeded(result) {
   const missing = result.order.filter((w) => !result.verified[w]);
   if (!missing.length) return 0;
   const Lf = Object.fromEntries(result.walls.map((w) => [w.id, w.length.num()]));
@@ -892,7 +912,7 @@ return { all, get, put, remove, persist, exportStatus };
 
 
 
-const FORM_VERSION = "0.1.0+4892fe9903";            // the build writes the version and content hash here
+const FORM_VERSION = "0.1.0+aa65a46299";            // the build writes the version and content hash here
 const FRACTIONS = ["1/16", "1/8", "3/16", "1/4", "5/16", "3/8", "7/16", "1/2",
   "9/16", "5/8", "11/16", "3/4", "13/16", "7/8", "15/16"];
 
@@ -1027,13 +1047,13 @@ function prepare(measure) {
   data.corners = data.corners.filter((c) => {
     if (blank(c.diagonal)) return false;
     const good = ok(c.diagonal) && ok(c.leg_a, true) && ok(c.leg_b, true) && wallIds.has(c.after);
-    if (!good) problems.push({ text: `corner after ${c.after}: an entry can't be read`, route: ["corners"] });
+    if (!good) problems.push({ text: `corner after ${c.after}: an entry can't be read`, route: ["readings"] });
     return good;
   });
   data.check_diagonals = data.check_diagonals.filter((d, i) => {
     const good = d.from && d.to && wallIds.has(d.from.wall) && wallIds.has(d.to.wall) && ok(d.from.distance, true) &&
       ok(d.to.distance, true) && ok(d.reading, true);
-    if (!good) problems.push({ text: `check diagonal ${i + 1}: an entry can't be read`, route: ["diagonals"] });
+    if (!good) problems.push({ text: `check diagonal ${i + 1}: an entry can't be read`, route: ["readings"] });
     return good;
   });
   data.ceiling_readings = data.ceiling_readings.filter((r) => {
@@ -1229,7 +1249,16 @@ function field(obj, f, onChange) {
 
 // --- the plan sketch -----------------------------------------------------------------------------------------
 
-function sketch(result, { diagonals = true } = {}) {
+/** A point on a wall in the room frame: ``end`` start or end, ``distance`` (mm) back from it. */
+function wallPoint(result, wall, end, distance) {
+  const i = result.order.indexOf(wall);
+  const [[x, y], hd] = result.frames[i];
+  const s = end === "start" ? distance : result.walls[i].length.num() - distance;
+  return [x + s * Math.cos(hd * Math.PI / 180), y + s * Math.sin(hd * Math.PI / 180)];
+}
+
+/** The plan; ``mark`` (v1.43, a guided card): points A and B, the line between them, its walls highlighted. */
+function sketch(result, { diagonals = true, mark = null } = {}) {
   if (!result) return h("div", { class: "sketch muted" }, "The plan shows once every wall has a length.");
   const pts = [];
   result.frames.forEach(([[x, y], hd], k) => {
@@ -1251,11 +1280,12 @@ function sketch(result, { diagonals = true } = {}) {
   pts.forEach(([a, b], i) => {
     const [x1, y1] = P(a), [x2, y2] = P(b);
     const id = result.walls[i].id;
-    add("line", { x1, y1, x2, y2, class: `wall ${result.verified[id] ? "ok" : ""}` });
+    const hot = mark && mark.walls.includes(id);
+    add("line", { x1, y1, x2, y2, class: `wall ${mark ? (hot ? "hot" : "dim") : result.verified[id] ? "ok" : ""}` });
     const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, n = Math.hypot(dx, dy) || 1;
     add("text", { x: mx - dy / n * 16, y: my + dx / n * 16 + 5, class: "wlab" }, id);
   });
-  if (diagonals) {
+  if (diagonals && !mark) {                         // a card shows only its own A–B line
     for (const d of result.diagonals) {
       const xy = (p) => { const i = result.order.indexOf(p.wall); const [[x, y], hd] = result.frames[i];
         const s = p.end === "start" ? p.distance.num() : result.walls[i].length.num() - p.distance.num();
@@ -1264,18 +1294,27 @@ function sketch(result, { diagonals = true } = {}) {
       add("line", { x1, y1, x2, y2, class: `diag ${d.grade || "none"}` });
     }
   }
-  const [ox, oy] = P([0, 0]);
-  add("circle", { cx: ox, cy: oy, r: 4, class: "origin" });
+  if (mark) {
+    const [ax, ay] = P([mark.a[0], -mark.a[1]]), [bx, by] = P([mark.b[0], -mark.b[1]]);
+    add("line", { x1: ax, y1: ay, x2: bx, y2: by, class: `diag card ${mark.grade || "none"}` });
+    for (const [x, y, t] of [[ax, ay, "A"], [bx, by, "B"]]) {
+      add("circle", { cx: x, cy: y, r: 9, class: "pt" });
+      add("text", { x, y: y + 5, class: "ptlab" }, t);
+    }
+  } else {
+    const [ox, oy] = P([0, 0]);
+    add("circle", { cx: ox, cy: oy, r: 4, class: "origin" });
+  }
   return svg;
 }
 
 // --- screens -------------------------------------------------------------------------------------------------
 
-const STEPS = [["header", "Header"], ["plan", "Plan: walls"], ["corners", "Corners"], ["diagonals", "Check diagonals"],
+const STEPS = [["header", "Header"], ["plan", "Plan: walls"], ["readings", "Diagonals"],
   ["ceiling", "Ceiling readings"], ["walls", "Wall by wall"], ["review", "Review and export"]];
 
 function flow() {
-  const out = [["header"], ["plan"], ["corners"], ["diagonals"], ["ceiling"]];
+  const out = [["header"], ["plan"], ["readings"], ["ceiling"]];
   for (const w of m().walls) out.push(["wall", w.id]);
   out.push(["review"]);
   return out;
@@ -1303,11 +1342,11 @@ function render() {
   bar.append(chip);
   root.append(bar);
   const body = h("main", {});
-  const screens = { header: scrHeader, plan: scrPlan, corners: scrCorners, diagonals: scrDiagonals, ceiling: scrCeiling,
+  const screens = { header: scrHeader, plan: scrPlan, readings: scrReadings, custom: scrCustom, ceiling: scrCeiling,
     walls: scrWalls, wall: scrWall, item: scrItem, review: scrReview, steps: scrSteps };
   body.append(screens[screen](...app.route.slice(1)));
   root.append(body);
-  if (screen !== "steps" && screen !== "item") root.append(navBar());
+  if (!["steps", "item", "custom"].includes(screen)) root.append(navBar());
   statusChip();
 }
 
@@ -1342,8 +1381,21 @@ function navBar() {
   const next = here >= 0 && here < steps.length - 1 ? steps[here + 1] : null;
   return h("nav", { class: "bottom" },
     h("button", { type: "button", class: "big ghost", disabled: !prev, onclick: () => prev && go(...prev) }, "‹ Back"),
-    h("button", { type: "button", class: "big", disabled: !next, onclick: () => next && go(...next) },
+    // v1.43 (AJ): Done is always there; it asks before leaving a measure changed since its last export
+    h("button", { type: "button", class: "big", onclick: () => (next ? go(...next) : done()) },
       next ? `${stepTitle(next)} ›` : "Done"));
+}
+
+function done() {
+  const st = S.exportStatus(app.rec).state;
+  if (st === "exported") { go("home"); return; }
+  const text = st === "never" ? "Not exported yet: leave anyway?" : "Not exported since the last change: leave anyway?";
+  const box = h("div", { class: "modal", role: "dialog", "aria-modal": "true" },
+    h("div", { class: "card" }, h("h3", {}, text),
+      h("p", { class: "muted" }, "It stays saved on this phone; export it to send it."),
+      h("button", { type: "button", class: "big", onclick: () => { box.remove(); go("review"); } }, "Stay and export"),
+      h("button", { type: "button", class: "big ghost", onclick: () => { box.remove(); go("home"); } }, "Leave anyway")));
+  document.body.append(box);
 }
 
 function scrSteps() {
@@ -1480,38 +1532,189 @@ function cornerPairs() {
   return Array.from({ length: Math.max(n, 0) }, (_, k) => [ws[k], ws[(k + 1) % ws.length]]);
 }
 
-function scrCorners() {
-  const box = h("div", {});
-  box.append(h("p", { class: "muted small card" }, "Each corner is 90° unless its diagonal says otherwise. From a point leg a back along the first wall to a point leg b out along the next. Legs 48\" unless you change them."));
-  const lives = [];
+// --- guided diagonal cards (v1.43, AJ: one card per reading) ----------------------------------------------
+//
+// Every corner diagonal first, then each check diagonal: the ones already in
+// the measure and each new suggestion, which becomes an entry with no reading
+// when the cards are dealt (so a card keeps its points while AJ types). A
+// closed room's last corner has no card: the closure gives its angle. Skip
+// ("can't reach") marks the entry skipped; the corner stays unchecked (a warn).
+
+const DEFAULT_LEG = "48";
+const legText = (v) => (unit() === "in" ? `${v || DEFAULT_LEG}"` : `${v || "1219.2"} mm`);
+
+function samePoints(d, s) {
+  const key = (p) => `${p.wall}:${p.end}:${M.mm2(p.distance)}`;
+  const pt = (p) => ({ wall: p.wall, end: p.end || "start",
+    distance: blank(p.distance) ? new M.Frac(0n) : M.parseEntry(p.distance, unit()) });
+  try { return key(pt(d.from)) === key(s.from) && key(pt(d.to)) === key(s.to); } catch { return false; }
+}
+
+function distanceText(mm) {
+  if (mm.eq(0)) return "0";
+  if (unit() === "mm") return M.mm2(mm).replace(/\.?0+$/, "");
+  return M.ftin(mm).split(" [")[0].replace(/"$/, "").replace(/(\d+)'-(\d+)/, (_, f, i) => String(Number(f) * 12 + Number(i)));
+}
+
+/** The cards in order: [{kind: corner, entry, after, next} | {kind: check, entry}]. */
+function cards() {
+  const last = m().closed ? m().walls[m().walls.length - 1].id : null;
+  const out = [];
   for (const [a, b] of cornerPairs()) {
-    let target = m().corners.find((x) => x.after === a);
-    if (!target) { target = { after: a }; m().corners.push(target); }
-    const card = h("div", { class: "card" }, h("h3", {}, `Corner ${a}/${b}`));
-    const onCh = () => changed();
-    card.append(lengthField(target, { key: "leg_a", label: `Leg a, back along ${a}`, placeholder: unit() === "in" ? "48" : "1219.2", optional: true }, onCh),
-      lengthField(target, { key: "leg_b", label: `Leg b, out along ${b}`, placeholder: unit() === "in" ? "48" : "1219.2", optional: true }, onCh),
-      lengthField(target, { key: "diagonal", label: "Diagonal (blank: not taken)", optional: true }, onCh));
-    const out = h("div", { class: "result" });
-    card.append(out);
-    lives.push(() => {
-      const r = app.result && app.result.corners.find((x) => x.after === a);
-      out.innerHTML = "";
-      if (!r) { out.append(h("span", { class: "muted" }, "Enter every wall's length first.")); return; }
-      const flags = app.result.flags.filter((f) => f.subject === `corner ${r.name}`);
-      const angle = `${(r.angle / 100).toFixed(2)}°`;
-      const line = r.status === "unchecked" ? "90° assumed (unchecked)" : r.status === "impossible" ? "can't be: re-measure"
-        : r.status === "closing" || (m().closed && r === app.result.corners[app.result.corners.length - 1])
-          ? `${angle}, closes the room` : r.status === "square" ? `90° (within 1/8" of square; ${r.difference_mm.toFixed(2)} mm)`
-            : `${angle}, not square (${r.difference_mm.toFixed(2)} mm from square)`;
-      out.append(h("div", { class: `big-result ${r.status === "square" ? "pass" : r.status === "out_of_square" ? "warn" : r.status === "impossible" ? "fail" : ""}` }, line),
-        flagList(flags.filter((f) => f.code !== "measure_corner_unchecked"), ""));
-    });
-    box.append(card);
+    if (a === last) continue;
+    let entry = m().corners.find((c) => c.after === a);
+    if (!entry) { entry = { after: a }; m().corners.push(entry); }
+    out.push({ kind: "corner", entry, after: a, next: b });
   }
-  if (!cornerPairs().length) box.append(h("p", { class: "card muted" }, "One wall: no corners."));
-  app.live = () => lives.forEach((f) => f());
+  for (const d of m().check_diagonals) out.push({ kind: "check", entry: d });
+  return out;
+}
+
+/** Each suggestion not yet a card becomes one (no reading yet). */
+function dealSuggestions() {
+  if (!app.result) return false;
+  let added = false;
+  const seen = new Set();
+  for (const s of Object.values(app.result.suggestions)) {
+    if (seen.has(s.name) || m().check_diagonals.some((d) => samePoints(d, s))) continue;
+    seen.add(s.name);
+    m().check_diagonals.push({ from: { wall: s.from.wall, end: s.from.end, distance: distanceText(s.from.distance) },
+      to: { wall: s.to.wall, end: s.to.end, distance: distanceText(s.to.distance) }, suggested: true });
+    added = true;
+  }
+  return added;
+}
+
+/** Plain words for a point (v1.43): "W1's left end (the corner where W1 starts)", "on W2, 36" back from its far end". */
+function pointWords(p) {
+  const dist = blank(p.distance) ? "0" : String(p.distance).trim();
+  if (dist === "0") return p.end === "start" ? `${p.wall}'s left end (the corner where ${p.wall} starts)`
+    : `${p.wall}'s far end (where ${p.wall} ends)`;
+  return p.end === "start" ? `on ${p.wall}, ${legText(dist)} out from its left end`
+    : `on ${p.wall}, ${legText(dist)} back from its far end`;
+}
+
+function scrReadings(k) {
+  const box = h("div", {});
+  if (!app.result) {
+    box.append(h("div", { class: "card" }, h("p", {}, "Every wall needs its length first (Plan)."),
+      h("button", { type: "button", class: "big", onclick: () => go("plan") }, "‹ Plan")));
+    return box;
+  }
+  if (k === undefined && dealSuggestions()) { changed(); }
+  const list = cards();
+  if (!list.length) {
+    box.append(h("div", { class: "card" }, h("p", {}, "One wall: no corners and no diagonals to take.")));
+    return box;
+  }
+  const i = Math.min(Math.max(Number(k ?? firstOpen(list)), 0), list.length);
+  if (i === list.length) return readingsDone(box, list);
+  const c = list[i];
+  const e = c.entry;
+  const head = h("div", { class: "row2" }, h("b", {}, c.kind === "corner" ? `Corner ${c.after}/${c.next}` :
+    e.suggested ? "Check diagonal" : "Check diagonal (custom)"), h("span", { class: "muted" }, `reading ${i + 1} of ${list.length}`));
+  const sk = h("div", {});
+  const words = h("div", { class: "words" });
+  const result = h("div", { class: "result" });
+  const card = h("div", { class: "card guided" }, head, sk, words);
+  box.append(card);
+  const onCh = () => { if (e.skipped && !blank(e.diagonal ?? e.reading)) delete e.skipped; changed(); };
+  if (c.kind === "corner") {
+    card.append(lengthField(e, { key: "diagonal", label: "Reading A to B *", placeholder: unit() === "in" ? "e.g. 67 7/8" : "mm" }, onCh));
+    const legs = h("div", { class: "legs", hidden: !(e.leg_a || e.leg_b) });
+    legs.append(lengthField(e, { key: "leg_a", label: `Leg a, back along ${c.after} from the corner`, optional: true, placeholder: DEFAULT_LEG }, onCh),
+      lengthField(e, { key: "leg_b", label: `Leg b, out along ${c.next} from the corner`, optional: true, placeholder: DEFAULT_LEG }, onCh));
+    card.append(h("button", { type: "button", class: "ghost small-btn", onclick: () => { legs.hidden = !legs.hidden; } },
+      `Legs ${legText(e.leg_a)} and ${legText(e.leg_b)}: Change legs`), legs);
+  } else {
+    card.append(lengthField(e, { key: "reading", label: "Reading A to B *", placeholder: unit() === "in" ? "e.g. 188 7/16" : "mm" }, onCh));
+  }
+  card.append(result);
+  const nextLabel = i + 1 < list.length ? "Next reading ›" : "Done with diagonals ›";
+  card.append(h("div", { class: "row" },
+    h("button", { type: "button", class: "big ghost", onclick: () => {
+      e.skipped = true;
+      if (c.kind === "corner") delete e.diagonal; else delete e.reading;
+      changed();
+      go("readings", i + 1);
+    } }, "Skip (can't reach)"),
+    h("button", { type: "button", class: "big", onclick: () => go("readings", i + 1) }, nextLabel)));
+  if (c.kind === "check" && !e.suggested) {
+    card.append(h("button", { type: "button", class: "ghost danger", onclick: () => {
+      m().check_diagonals.splice(m().check_diagonals.indexOf(e), 1); changed(); go("readings", i);
+    } }, "Remove this diagonal"));
+  }
+  box.append(h("div", { class: "card" }, h("div", { class: "row" },
+    h("button", { type: "button", class: "ghost", disabled: i === 0, onclick: () => go("readings", i - 1) }, "‹ Previous reading"),
+    h("button", { type: "button", class: "ghost", onclick: () => go("custom") }, "Custom diagonal…")),
+    h("div", { class: "muted small" }, readingsLine())));
+  app.live = () => {
+    const r = app.result;
+    sk.innerHTML = ""; words.innerHTML = ""; result.innerHTML = "";
+    if (!r) return;
+    let mark, said, out;
+    if (c.kind === "corner") {
+      const corner = r.corners.find((x) => x.after === c.after);
+      let a, b;
+      try { a = blank(e.leg_a) ? M.inch(48) : M.parseEntry(e.leg_a, unit()); b = blank(e.leg_b) ? M.inch(48) : M.parseEntry(e.leg_b, unit()); }
+      catch { a = b = M.inch(48); }
+      mark = { a: wallPoint(r, c.after, "end", a.num()), b: wallPoint(r, c.next, "start", b.num()), walls: [c.after, c.next],
+        grade: corner && corner.status === "out_of_square" ? "warn" : corner && corner.status === "square" ? "pass" : null };
+      said = [`A: on ${c.after}, ${legText(e.leg_a)} back from the ${c.after}/${c.next} corner.`,
+        `B: on ${c.next}, ${legText(e.leg_b)} out from the corner.`, "Measure A to B."];
+      out = !corner || corner.status === "unchecked" ? (e.skipped ? ["warn", "Skipped: the corner stays unchecked (90° assumed)."] : null)
+        : corner.status === "square" ? ["pass", `Square: within 1/8" (${Math.abs(corner.difference_mm).toFixed(2)} mm from square).`]
+          : corner.status === "impossible" ? ["fail", "That diagonal can't join those legs: re-measure."]
+            : ["warn", `${(corner.angle / 100).toFixed(2)}°, not square (${Math.abs(corner.difference_mm).toFixed(2)} mm from square).`];
+    } else {
+      const valid = prepare(m()).data.check_diagonals;
+      const key = JSON.stringify({ ...e, suggested: undefined, skipped: undefined });
+      const j = valid.findIndex((x) => JSON.stringify({ ...x, suggested: undefined, skipped: undefined }) === key);
+      const d = r.diagonals[j];
+      if (!d) { words.append(h("p", { class: "err" }, "A point can't be read: remove it or fix it under Custom diagonal…")); return; }
+      mark = { a: wallPoint(r, d.a.wall, d.a.end, d.a.distance.num()), b: wallPoint(r, d.b.wall, d.b.end, d.b.distance.num()),
+        walls: [...new Set([d.a.wall, d.b.wall, ...Object.entries(d.sensitivity).filter(([, v]) => v > 1e-9).map(([w]) => w)])],
+        grade: d.grade };
+      said = [`A: ${pointWords(e.from)}.`, `B: ${pointWords(e.to)}.`, "Measure A to B."];
+      const exp = `expected ${d.expected_mm.toFixed(2)} mm (${M.ftin2(d.expected_mm).split(" [")[0]})`;
+      out = d.grade === null ? (e.skipped ? ["warn", `Skipped (can't reach): ${exp}.`] : null)
+        : d.grade === "pass" ? ["pass", `Pass: ${Math.abs(d.difference_mm).toFixed(2)} mm from the ${exp}.`]
+          : d.grade === "warn" ? ["warn", `Warn: ${Math.abs(d.difference_mm).toFixed(2)} mm off the ${exp}: check ${
+            Object.entries(d.sensitivity).filter(([, v]) => v > 1e-9).map(([w]) => w).join(" or ")}.`]
+            : ["fail", `Fail: ${Math.abs(d.difference_mm).toFixed(2)} mm off the ${exp}: doesn't agree, re-measure.`];
+    }
+    sk.append(sketch(r, { mark }));
+    words.append(...said.map((t) => h("p", { class: "say" }, t)),
+      h("p", { class: "muted" }, "Any height, the same at both ends: about counter height."));
+    if (out) result.append(h("div", { class: `big-result ${out[0]}` }, out[1]));
+  };
   app.live();
+  return box;
+}
+
+function firstOpen(list) {
+  const k = list.findIndex((c) => !c.entry.skipped && blank(c.kind === "corner" ? c.entry.diagonal : c.entry.reading));
+  return k < 0 ? list.length : k;
+}
+
+function readingsLine() {
+  return app.result ? (M.readingsText(M.readingsNeeded(app.result)) || "Every wall verified, every corner checked.") : "";
+}
+
+function readingsDone(box, list) {
+  const r = app.result;
+  const n = M.readingsNeeded(r);
+  const skipped = list.filter((c) => c.entry.skipped).length;
+  box.append(h("div", { class: "card" }, h("h3", {}, n ? readingsLine() : "Every wall verified, every corner checked."),
+    sketch(r),
+    skipped ? h("p", { class: "warn" }, `${skipped} skipped (can't reach).`) : "",
+    r.closure ? h("p", { class: r.closure.grade }, `Closure gap ${r.closure.gap_mm.toFixed(2)} mm: ${r.closure.grade}`) : "",
+    flagList(r.flags.filter((f) => ["measure_diagonal", "measure_corner_angle", "measure_corner_unchecked",
+      "measure_closure", "measure_corner_impossible", "measure_short_leg"].includes(f.code)), ""),
+    n ? h("button", { type: "button", class: "big", onclick: () => { dealSuggestions(); changed(); go("readings"); } },
+      "Take the suggested readings") : "",
+    h("button", { type: "button", class: "big ghost", onclick: () => go("readings", 0) }, "‹ Back to the first reading"),
+    h("button", { type: "button", class: "big ghost", onclick: () => go("custom") }, "Custom diagonal…")));
   return box;
 }
 
@@ -1524,69 +1727,22 @@ function pointEditor(obj, side, label, onCh) {
   return h("div", { class: "pt" }, wallBox, endBox, dist);
 }
 
-function scrDiagonals() {
-  const box = h("div", {});
-  const sk = h("div", { class: "card" });
-  const unv = h("div", { class: "card" });
-  box.append(sk, unv);
-  const lives = [];
-  const list = m().check_diagonals;
-  list.forEach((d, i) => {
-    const card = h("div", { class: "card" }, h("h3", {}, `Check diagonal ${i + 1}`));
-    const onCh = (re) => changed({ rerender: !!re });
-    card.append(pointEditor(d, "from", "From", onCh), pointEditor(d, "to", "To", onCh),
-      lengthField(d, { key: "reading", label: "Reading", optional: true }, () => changed()));
-    const out = h("div", { class: "result" });
-    card.append(out, h("button", { type: "button", class: "ghost danger", onclick: () => { list.splice(i, 1); changed({ rerender: true }); } }, "Delete diagonal"));
-    lives.push(() => {
-      out.innerHTML = "";
-      if (!app.result) { out.append(h("span", { class: "muted" }, "Enter every wall's length first.")); return; }
-      const valid = prepare(m()).data.check_diagonals;
-      const k = valid.findIndex((x) => JSON.stringify(x) === JSON.stringify(d));
-      const r = app.result.diagonals[k];
-      if (!r) { out.append(h("span", { class: "err" }, "An entry can't be read.")); return; }
-      out.append(h("div", { class: "muted" }, r.name),
-        h("div", { class: `big-result ${r.grade || ""}` }, `expected ${r.expected_mm.toFixed(2)} mm (${M.ftin2(r.expected_mm)})` +
-          (r.grade ? ` · ${Math.abs(r.difference_mm).toFixed(2)} mm off: ${r.grade}` : "")),
-        h("div", { class: "muted small" }, "moves " + Object.entries(r.sensitivity).filter(([, v]) => v > 1e-9).map(([w, v]) => `${w} ${v.toFixed(2)}`).join(", ")));
-    });
-    box.append(card);
-  });
-  box.append(h("button", { type: "button", class: "big ghost", onclick: () => {
-    list.push({ from: { wall: m().walls[0].id, end: "start" }, to: { wall: m().walls[Math.min(1, m().walls.length - 1)].id, end: "end" } });
-    changed({ rerender: true });
-  } }, "+ Add check diagonal"));
-  app.live = () => {
-    sk.innerHTML = ""; sk.append(sketch(app.result));
-    unv.innerHTML = "";
-    if (!app.result) { unv.append(h("p", { class: "muted" }, "Enter every wall's length first.")); return; }
-    const missing = Object.entries(app.result.verified).filter(([, v]) => !v).map(([w]) => w);
-    if (!missing.length) { unv.append(h("div", { class: "big-result pass" }, "Every wall is verified.")); }
-    else {
-      unv.append(h("h3", {}, `Not verified: ${missing.join(", ")}`),
-        h("div", { class: "big-result warn" }, M.readingsText(M.readingsNeeded(app.result))));
-      const seen = new Set();
-      for (const w of missing) {
-        const s = app.result.suggestions[w];
-        if (!s || seen.has(s.name)) continue;
-        seen.add(s.name);
-        unv.append(h("div", { class: "row2" }, h("span", {}, `${s.name} (verifies ${missing.filter((x) => app.result.suggestions[x]?.name === s.name).join(", ")})`),
-          h("button", { type: "button", class: "ghost", onclick: () => {
-            const txt = (mm) => (mm.eq(0) ? "0" : unit() === "in" ? M.ftin(mm).split(" [")[0].replace(/"$/, "").replace(/(\d+)'-(\d+)/, (_, f, i) => String(Number(f) * 12 + Number(i))) : M.mm2(mm));
-            list.push({ from: { wall: s.from.wall, end: s.from.end, distance: txt(s.from.distance) },
-              to: { wall: s.to.wall, end: s.to.end, distance: txt(s.to.distance) } });
-            changed({ rerender: true });
-          } }, "Take it")));
-      }
-      if (m().closed) unv.append(h("p", { class: "muted small" }, "In a closed room the closure verifies only the last wall; a rectangle takes its two room diagonals."));
-    }
-    if (app.result.closure) {
-      const c = app.result.closure;
-      unv.append(h("div", { class: `big-result ${c.grade}` }, `Closure gap ${c.gap_mm.toFixed(2)} mm: ${c.grade}`));
-    }
-    lives.forEach((f) => f());
-  };
-  app.live();
+/** Custom diagonal… (v1.43): two points picked, then its own card. */
+function scrCustom() {
+  const d = { from: { wall: m().walls[0].id, end: "start", distance: "0" },
+    to: { wall: m().walls[Math.min(1, m().walls.length - 1)].id, end: "end", distance: "0" } };
+  const box = h("div", { class: "card" }, h("h3", {}, "Custom diagonal: pick its two points"));
+  const holder = h("div", {});
+  const paint = () => { holder.innerHTML = ""; holder.append(pointEditor(d, "from", "A", (re) => re && paint()),
+    pointEditor(d, "to", "B", (re) => re && paint())); };
+  paint();
+  box.append(holder, h("div", { class: "row" },
+    h("button", { type: "button", class: "big ghost", onclick: () => go("readings") }, "Cancel"),
+    h("button", { type: "button", class: "big", onclick: () => {
+      m().check_diagonals.push(d);
+      changed();
+      go("readings", cards().length - 1);
+    } }, "Add it")));
   return box;
 }
 
