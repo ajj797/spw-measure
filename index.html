@@ -1,0 +1,1843 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b3a57">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Measure">
+<title>SPW site measure</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+/* Big targets, one hand, outdoors: high contrast, 18px text, 52px buttons. */
+:root { --ink: #111; --muted: #5a6470; --bg: #f3f4f6; --card: #fff; --brand: #1b3a57; --line: #c9ced6;
+  --pass: #17663a; --warn: #8a5a00; --fail: #b3261e; --passbg: #e3f4ea; --warnbg: #fff3d6; --failbg: #fde3e1; }
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; margin: 0; background: var(--bg); color: var(--ink); font: 18px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#app { max-width: 560px; margin: 0 auto; padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+main { padding: 8px 12px; }
+button { font: inherit; min-height: 52px; padding: 8px 14px; border-radius: 10px; border: 2px solid var(--brand);
+  background: var(--brand); color: #fff; cursor: pointer; }
+button.ghost { background: #fff; color: var(--brand); }
+button.danger { border-color: var(--fail); color: var(--fail); background: #fff; }
+button:disabled { opacity: .45; }
+button.big { width: 100%; margin: 6px 0; font-size: 19px; font-weight: 600; }
+input { min-width: 0; font: inherit; font-size: 20px; width: 100%; min-height: 52px; padding: 8px 10px; border: 2px solid var(--line);
+  border-radius: 10px; background: #fff; color: var(--ink); }
+input:focus { outline: 3px solid #7aa7d6; border-color: var(--brand); }
+h1 { font-size: 26px; margin: 16px 0 4px; } h2 { font-size: 20px; margin: 20px 0 8px; } h3 { font-size: 19px; margin: 0 0 8px; }
+.top { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 4px; align-items: center;
+  padding: calc(6px + env(safe-area-inset-top)) 8px 6px; background: var(--brand); color: #fff; }
+.title { min-width: 0; }
+.top button.ghost { min-height: 44px; padding: 4px 8px; font-size: 16px; background: transparent; color: #fff; border-color: #fff8; }
+.title .t1 { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .title .t2 { font-size: 14px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip { max-width: 8.5em; line-height: 1.15; min-height: 44px; padding: 4px 8px; font-size: 14px; border: 0; font-weight: 700; }
+.chip.pass { background: var(--pass); } .chip.warn { background: #c98a00; } .chip.fail { background: var(--fail); }
+.bottom { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 2fr; gap: 8px; padding: 8px 12px
+  calc(8px + env(safe-area-inset-bottom)); background: #fffe; border-top: 1px solid var(--line); max-width: 560px; margin: 0 auto; }
+.bottom button.big { margin: 0; }
+.card { background: var(--card); border-radius: 14px; padding: 14px; margin: 10px 0; box-shadow: 0 1px 2px #0002; }
+.field { display: block; margin: 10px 0; }
+.lab { display: block; font-size: 15px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+.row { display: flex; gap: 8px; align-items: stretch; } .row > * { flex: 1; }
+.row .side { flex: 0 0 auto; min-width: 7.5em; font-size: 15px; }
+.row .side { font-weight: 600; } .side.on { background: var(--warn); border-color: var(--warn); color: #fff; }
+body.shot .bottom { position: static; }
+.pair { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: end; border-top: 1px solid var(--line);
+  padding-top: 4px; margin-top: 6px; }
+.pair > .field:first-child { grid-column: 1 / -1; } .pair .field { margin: 4px 0; }
+.x { min-height: 52px; margin-bottom: 4px; }
+.fracs[hidden] { display: none; }
+.fracs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+.frac { min-height: 46px; padding: 2px; font-size: 17px; background: #eef3f8; color: var(--brand); border-color: #9db6cf; }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.choices button { background: #fff; color: var(--brand); flex: 1 1 auto; }
+.choices button.on { background: var(--brand); color: #fff; }
+.err { color: var(--fail); font-size: 15px; min-height: 0; }
+.muted { color: var(--muted); } .small { font-size: 15px; }
+.hint { background: var(--warnbg); padding: 10px; border-radius: 10px; }
+.result { margin-top: 8px; }
+.big-result { font-size: 19px; font-weight: 700; padding: 10px; border-radius: 10px; background: #eef1f4; }
+.big-result.pass, p.pass { background: var(--passbg); color: var(--pass); }
+.big-result.warn, p.warn { background: var(--warnbg); color: var(--warn); }
+.big-result.fail, p.fail { background: var(--failbg); color: var(--fail); }
+p.pass, p.warn, p.fail { padding: 8px; border-radius: 8px; font-weight: 600; }
+h3.fail { color: var(--fail); }
+.flags { list-style: none; padding: 0; margin: 8px 0 0; }
+.flags li { padding: 8px 10px; border-radius: 8px; margin: 6px 0; font-size: 16px; }
+.flags li.fail { background: var(--failbg); color: var(--fail); } .flags li.warn { background: var(--warnbg); color: var(--warn); }
+.flags li.info { background: #eef1f4; color: var(--muted); }
+.flags a { color: inherit; }
+.step, .item, .open { display: block; width: 100%; text-align: left; margin: 6px 0; background: #fff; color: var(--ink); border-color: var(--line); }
+.item .flags li { font-size: 14px; padding: 4px 8px; }
+.tick { color: var(--pass); font-weight: 700; }
+.row2 { display: flex; gap: 8px; align-items: center; justify-content: space-between; } .row2 .open { flex: 1; margin: 0; }
+.home { padding: 8px 14px; }
+.check { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 600; }
+.check input { width: 32px; height: 32px; min-height: 0; }
+.sketch { width: 100%; height: auto; display: block; }
+.sketch .wall { stroke: #8a95a3; stroke-width: 6; stroke-linecap: round; }
+.sketch .wall.ok { stroke: var(--pass); }
+.sketch .diag { stroke-width: 2.5; stroke-dasharray: 7 5; stroke: #555; }
+.sketch .diag.pass { stroke: var(--pass); } .sketch .diag.warn { stroke: #c98a00; } .sketch .diag.fail { stroke: var(--fail); }
+.sketch .wlab { font-size: 15px; font-weight: 700; text-anchor: middle; fill: var(--ink); }
+.sketch .origin { fill: var(--brand); }
+.pt { border-left: 4px solid #dbe3ec; padding-left: 10px; margin: 6px 0; }
+.exp { font-size: 15px; font-weight: 600; } .exp.exported { color: var(--pass); } .exp.changed { color: var(--warn); }
+.exp.never { color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<noscript>The site-measure form needs JavaScript.</noscript>
+<script type="module">
+const M = (() => {
+// The site measure's checks, the form's copy (spec §18.2 "S24" "Shared checks").
+//
+// A second copy of a small part of the engine (spw/measure/entry.py and
+// spw/measure/checks.py), kept equal to it by tests/measure_cases.json, which
+// both suites run. The engine stays the authority: these results are the
+// site preview, and the export carries them only for reference.
+//
+// Lengths are exact (BigInt fractions of a mm, like the engine's Fraction);
+// angles and diagonals are worked in floating point and shown to 0.01 mm and
+// 0.01°, as the engine does. Messages give feet-inches with mm.
+
+class MeasureError extends Error {}
+
+// --- exact fractions --------------------------------------------------------------------------------
+
+const babs = (x) => (x < 0n ? -x : x);
+function gcd(a, b) {
+  a = babs(a); b = babs(b);
+  while (b) [a, b] = [b, a % b];
+  return a || 1n;
+}
+
+class Frac {
+  constructor(n, d = 1n) {
+    n = BigInt(n); d = BigInt(d);
+    if (d === 0n) throw new MeasureError("division by zero");
+    if (d < 0n) { n = -n; d = -d; }
+    const g = gcd(n, d);
+    this.n = n / g; this.d = d / g;
+  }
+  static of(x) { return x instanceof Frac ? x : new Frac(x); }
+  add(o) { o = Frac.of(o); return new Frac(this.n * o.d + o.n * this.d, this.d * o.d); }
+  sub(o) { o = Frac.of(o); return new Frac(this.n * o.d - o.n * this.d, this.d * o.d); }
+  mul(o) { o = Frac.of(o); return new Frac(this.n * o.n, this.d * o.d); }
+  div(o) { o = Frac.of(o); return new Frac(this.n * o.d, this.d * o.n); }
+  neg() { return new Frac(-this.n, this.d); }
+  abs() { return new Frac(babs(this.n), this.d); }
+  cmp(o) { o = Frac.of(o); const l = this.n * o.d, r = o.n * this.d; return l < r ? -1 : l > r ? 1 : 0; }
+  lt(o) { return this.cmp(o) < 0; }
+  le(o) { return this.cmp(o) <= 0; }
+  gt(o) { return this.cmp(o) > 0; }
+  ge(o) { return this.cmp(o) >= 0; }
+  eq(o) { return this.cmp(o) === 0; }
+  floor() { const q = this.n / this.d; return (this.n < 0n && q * this.d !== this.n) ? q - 1n : q; }
+  num() { return Number(this.n) / Number(this.d); }
+}
+
+const fmin = (xs) => xs.reduce((a, b) => (b.lt(a) ? b : a));
+const fmax = (xs) => xs.reduce((a, b) => (b.gt(a) ? b : a));
+
+const MM_PER_INCH = new Frac(254n, 10n);
+const inch = (x) => Frac.of(x).mul(MM_PER_INCH);
+
+/** A decimal or a/b string → Frac (Python's Fraction(str), the forms the layout syntax uses). */
+function fracText(text) {
+  const t = text.trim();
+  let m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(t);
+  if (m && (m[2] || m[3])) {
+    const digits = (m[2] || "0") + (m[3] || "");
+    const f = new Frac(BigInt(digits), 10n ** BigInt((m[3] || "").length));
+    return m[1] === "-" ? f.neg() : f;
+  }
+  m = /^([+-]?)(\d+)\s*\/\s*(\d+)$/.exec(t);
+  if (m) {
+    const f = new Frac(BigInt(m[2]), BigInt(m[3]));
+    return m[1] === "-" ? f.neg() : f;
+  }
+  throw new MeasureError(`not a number: '${text}'`);
+}
+
+const INCH_RE = /^\s*(-)?\s*(?:(\d+)(?:[-\s]+(\d+)\/(\d+))?|(\d+)\/(\d+)|(\d+\.\d+))\s*$/;
+
+function parseInches(text) {
+  const m = INCH_RE.exec(text);
+  if (!m) throw new MeasureError(`can't read inches from '${text}'`);
+  const [, sign, whole, num, den, loneNum, loneDen, dec] = m;
+  let v;
+  if (dec !== undefined) v = fracText(dec);
+  else if (loneNum !== undefined) v = new Frac(BigInt(loneNum), BigInt(loneDen));
+  else {
+    v = new Frac(BigInt(whole));
+    if (num !== undefined) v = v.add(new Frac(BigInt(num), BigInt(den)));
+  }
+  return sign ? v.neg() : v;
+}
+
+const WITH_UNIT = /\d\s*(in|mm|ft)\s*$/;
+const LENGTH_RE = /^\s*(.+?)\s*(in|mm|ft)\s*$/;
+
+/** A typed entry → exact mm (spw/measure/entry.py). */
+function parseEntry(text, unit = "in", where = "entry") {
+  if (unit !== "in" && unit !== "mm") throw new MeasureError(`default_unit is in or mm, not '${unit}'`);
+  if (typeof text === "boolean" || (typeof text !== "string" && typeof text !== "number")) {
+    throw new MeasureError(`${where}: '${text}' isn't a length`);
+  }
+  const raw = String(text).trim();
+  if (!raw) throw new MeasureError(`${where}: empty`);
+  try {
+    if (WITH_UNIT.test(raw)) {
+      const [, number, u] = LENGTH_RE.exec(raw);
+      if (u === "ft") return fracText(number).mul(12).mul(MM_PER_INCH);
+      return u === "in" ? parseInches(number).mul(MM_PER_INCH) : fracText(number);
+    }
+    if (unit === "in") return parseInches(raw).mul(MM_PER_INCH);
+    if (!/^-?\d+(\.\d+)?$/.test(raw)) throw new MeasureError("millimetres are a decimal");
+    return fracText(raw);
+  } catch (e) {
+    throw new MeasureError(`${where}: can't read '${raw}' (${e.message})`);
+  }
+}
+
+// --- display ------------------------------------------------------------------------------------------
+
+/** Half away from zero at 0.01 on a float (the engine's r2). */
+function r2(v) {
+  return Math.sign(v) * Math.floor(Math.abs(v) * 100 + 0.5 + 1e-9) / 100;
+}
+
+/** An exact value to 0.01 mm, half away from zero, as text ("2441.58"). */
+function mm2(f) {
+  f = Frac.of(f);
+  const n = f.abs().mul(100).add(new Frac(1n, 2n)).floor();
+  const s = `${n / 100n}.${String(n % 100n).padStart(2, "0")}`;
+  return f.n < 0n && n ? `-${s}` : s;
+}
+
+function ftinParts(sixteenths) {
+  const inches = sixteenths / 16n, rem = sixteenths % 16n;
+  const feet = inches / 12n, inch = inches % 12n;
+  let text = String(inch);
+  if (rem) {
+    const g = gcd(rem, 16n);
+    const part = `${rem / g}/${16n / g}`;
+    text = inch ? `${inch} ${part}` : part;
+  }
+  text += '"';
+  if (feet) text = `${feet}'-${text}`;
+  return text;
+}
+
+/** Feet-inches to the nearest 1/16" with mm in brackets (spw.units.fmt_ft_in), exact. */
+function ftin(value, mmPlaces = 1) {
+  const v = Frac.of(value);
+  const a = v.abs();
+  const six = a.div(MM_PER_INCH).mul(16).add(new Frac(1n, 2n)).floor();
+  const sign = v.n < 0n && six ? "-" : "";
+  const scale = 10n ** BigInt(mmPlaces);
+  const m = a.mul(scale).add(new Frac(1n, 2n)).floor();
+  const mmText = mmPlaces ? `${m / scale}.${String(m % scale).padStart(mmPlaces, "0")}` : String(m);
+  return `${sign}${ftinParts(six)} [${sign}${mmText}]`;
+}
+
+/** A small float difference: feet-inches with mm to 0.01. */
+function ftin2(v) {
+  const a = Math.abs(v);
+  const six = BigInt(Math.floor(a / 25.4 * 16 + 0.5));
+  const m = Math.floor(a * 100 + 0.5);
+  const sign = v < 0 && six ? "-" : "";
+  return `${sign}${ftinParts(six)} [${sign}${Math.floor(m / 100)}.${String(m % 100).padStart(2, "0")}]`;
+}
+
+const hund = (h) => `${h < 0 ? "-" : ""}${Math.floor(Math.abs(h) / 100)}.${String(Math.abs(h) % 100).padStart(2, "0")}`;
+
+// --- constants (spw/measure/checks.py) ------------------------------------------------------------------
+
+const SQUARE_TOL = 3.175;
+const DIAG_PASS = 6.35;
+const DIAG_WARN = 12.7;
+const SHORT_LEG = inch(36);
+const DEFAULT_LEG = "48in";
+const VERIFY = 0.5;
+const SUGGEST_ALONG = inch(36);
+const CEILING_VARY = inch(new Frac(1n, 4n));
+const TOLERANCE = inch(new Frac(1n, 32n));
+const DOOR_BOX_DEPTH = inch(1);
+const ROOM_TYPES = ["kitchen", "vanity"];
+const OPENING_KINDS = ["window", "door"];
+const SERVICE_TYPES = ["water_hot", "water_cold", "drain", "electrical", "gas", "vent", "switch", "floor_register"];
+const INTENT_WHATS = ["sink", "cooktop", "range", "fridge", "dishwasher", "hood", "tall", "other"];
+const INTENT_BY = ["centre", "left", "right"];
+const INTENT_TARGETS = ["window", "door", "service_point", "mark"];
+
+// --- geometry -------------------------------------------------------------------------------------------
+
+const dir = (h) => [Math.cos(h * Math.PI / 180), Math.sin(h * Math.PI / 180)];
+
+/** Each wall's start and heading: W1 from the origin along x; the next turns by 180° − the angle. */
+function chain(lengths, angles) {
+  const out = [];
+  let p = [0, 0], h = 0;
+  lengths.forEach((len, k) => {
+    out.push([p, h]);
+    const [dx, dy] = dir(h);
+    p = [p[0] + len * dx, p[1] + len * dy];
+    if (k < angles.length) h = h - (180 - angles[k]);
+  });
+  return out;
+}
+
+function cornerTheta(a, b, d) {
+  const c = (a * a + b * b - d * d) / (2 * a * b);
+  if (!(c >= -1 && c <= 1)) return null;
+  return Math.acos(c) * 180 / Math.PI;
+}
+
+function pointName(p) {
+  return p.distance.eq(0) ? `${p.wall} ${p.end}` : `${p.wall} ${ftin(p.distance)} from its ${p.end}`;
+}
+
+function pointXY(p, frames, Lf, order) {
+  const k = order.indexOf(p.wall);
+  const [[px, py], h] = frames[k];
+  const [dx, dy] = dir(h);
+  const s = p.end === "start" ? p.distance.num() : Lf[p.wall] - p.distance.num();
+  const grads = {};
+  for (let j = 0; j < k; j++) grads[order[j]] = dir(frames[j][1]);
+  if (p.end === "end") grads[p.wall] = [dx, dy];
+  return [[px + s * dx, py + s * dy], grads];
+}
+
+function measureDiagonal(a, b, frames, Lf, order) {
+  const [[ax, ay], ga] = pointXY(a, frames, Lf, order);
+  const [[bx, by], gb] = pointXY(b, frames, Lf, order);
+  const length = Math.hypot(bx - ax, by - ay);
+  const sens = {};
+  if (length === 0) { order.forEach((w) => { sens[w] = 0; }); return [0, sens]; }
+  const ux = (bx - ax) / length, uy = (by - ay) / length;
+  for (const w of order) {
+    const da = ga[w] || [0, 0], db = gb[w] || [0, 0];
+    sens[w] = Math.abs(ux * (db[0] - da[0]) + uy * (db[1] - da[1]));
+  }
+  return [length, sens];
+}
+
+function grade(diff) {
+  const d = Math.abs(diff);
+  return d <= DIAG_PASS + 1e-9 ? "pass" : d <= DIAG_WARN + 1e-9 ? "warn" : "fail";
+}
+
+/** Python's float(Fraction(f"{r2(x):.2f}")) as integer hundredths of a degree. */
+const toHund = (x) => Math.round(r2(x) * 100);
+
+// --- the run --------------------------------------------------------------------------------------------
+
+const list = (data, key) => {
+  const v = data[key] || [];
+  if (!Array.isArray(v) || !v.every((x) => x && typeof x === "object")) throw new MeasureError(`${key} is a list of entries`);
+  return v;
+};
+
+function fromSide(item, key, where) {
+  const side = item[`${key}_from`] ?? "left";
+  if (side !== "left" && side !== "right") throw new MeasureError(`${where}: ${key}_from is left or right`);
+  return side;
+}
+
+const blank = (v) => v === undefined || v === null || (typeof v === "string" && !v.trim());
+
+/**
+ * Run every check on a measure (the engine's spw.measure.checks.run). Throws
+ * MeasureError where the engine refuses the file at entry; ``entryErrors`` in
+ * the result is not used (the form reads fields one by one, see app.js).
+ */
+function run(data) {
+  const unit = data.default_unit ?? "in";
+  const parsed = {};
+  const len = (v, where) => { const mm = parseEntry(v, unit, where); parsed[where] = mm; return mm; };
+  const opt = (v, where) => (blank(v) ? null : len(v, where));
+  const flags = [];
+  const flag = (code, severity, text, subject = null) => flags.push({ code, severity, text, subject });
+
+  const walls = [];
+  list(data, "walls").forEach((w, i) => {
+    if (w.id === undefined || w.length === undefined) throw new MeasureError(`wall ${i + 1}: id and length are required`);
+    const length = len(w.length, `wall ${w.id} length`);
+    if (length.le(0)) throw new MeasureError(`wall ${w.id}: its length must be more than 0`);
+    walls.push({ id: String(w.id), length });
+  });
+  if (!walls.length) throw new MeasureError("the measure has no walls");
+  const order = walls.map((w) => w.id);
+  if (new Set(order).size !== order.length) throw new MeasureError("wall ids must be different");
+  const L = Object.fromEntries(walls.map((w) => [w.id, w.length]));
+  const Lf = Object.fromEntries(walls.map((w) => [w.id, w.length.num()]));
+  const closed = Boolean(data.closed);
+  if (closed && walls.length < 3) throw new MeasureError("a closed room has at least three walls");
+
+  // Corners.
+  const typed = {};
+  list(data, "corners").forEach((c, i) => {
+    const after = String(c.after);
+    if (!(after in L)) throw new MeasureError(`corner ${i + 1}: no wall '${after}'`);
+    if (order.indexOf(after) === order.length - 1 && !closed) {
+      throw new MeasureError(`corner ${i + 1}: ${after} is the last wall of an open room (no corner after it)`);
+    }
+    if (after in typed) throw new MeasureError(`corner ${i + 1}: two corners after ${after}`);
+    typed[after] = c;
+  });
+  const count = closed ? order.length : order.length - 1;
+  const corners = [];
+  for (let k = 0; k < count; k++) {
+    const after = order[k], next = order[(k + 1) % order.length];
+    const c = typed[after] || {};
+    const where = `corner ${after}/${next}`;
+    const name = `${after}/${next}`;
+    const d = opt(c.diagonal, `${where} diagonal`);
+    if (d === null) { corners.push({ after, next, name, angle: 9000, status: "unchecked" }); continue; }
+    const a = len(c.leg_a || DEFAULT_LEG, `${where} leg a`);
+    const b = len(c.leg_b || DEFAULT_LEG, `${where} leg b`);
+    if (a.le(0) || b.le(0)) throw new MeasureError(`${where}: legs must be more than 0`);
+    const sq = Math.hypot(a.num(), b.num());
+    const theta = cornerTheta(a.num(), b.num(), d.num());
+    const corner = { after, next, name, angle: 9000, status: "square", leg_a: a, leg_b: b, diagonal: d,
+      square_mm: sq, difference_mm: d.num() - sq, theta, diagonal_angle: null };
+    if (theta === null) corner.status = "impossible";
+    else if (Math.abs(d.num() - sq) > SQUARE_TOL + 1e-9) { corner.status = "out_of_square"; corner.angle = toHund(theta); }
+    corners.push(corner);
+    for (const [leg, nm] of [[a, "a"], [b, "b"]]) {
+      if (leg.lt(SHORT_LEG)) {
+        flag("measure_short_leg", "warn", `corner ${name}: leg ${nm} is ${ftin(leg)}, under 36": the angle is less certain`,
+          `corner ${name}`);
+      }
+    }
+  }
+  const angles = corners.slice(0, order.length - 1).map((c) => c.angle / 100);
+  const frames = chain(order.map((w) => Lf[w]), angles);
+
+  // Closure.
+  let closure = null;
+  if (closed) {
+    const [[sx, sy], h] = frames[frames.length - 1];
+    const [dx, dy] = dir(h);
+    const last = order[order.length - 1];
+    const gap = Math.hypot(sx + Lf[last] * dx, sy + Lf[last] * dy);
+    const closing = toHund((((180 - h) % 360) + 360) % 360);
+    const lc = corners[corners.length - 1];
+    if (lc.status === "square" || lc.status === "out_of_square") lc.diagonal_angle = lc.angle;
+    lc.angle = closing;
+    if (lc.status === "unchecked") lc.status = "closing";
+    closure = { gap_mm: gap, grade: grade(gap), closing_angle: closing, diagonal_angle: lc.diagonal_angle };
+  }
+  corners.forEach((c, k) => {
+    const subject = `corner ${c.name}`;
+    if (c.status === "impossible") {
+      flag("measure_corner_impossible", "fail", `corner ${c.name}: a diagonal of ${ftin(c.diagonal)} can't join legs of ` +
+        `${ftin(c.leg_a)} and ${ftin(c.leg_b)}: re-measure`, subject);
+    } else if (c.status === "unchecked") {
+      flag("measure_corner_unchecked", "info", `corner ${c.name} is unchecked: 90° assumed (no corner diagonal)`, subject);
+    } else if (closed && k === corners.length - 1) {
+      let text = `corner ${c.name} closes the room at ${hund(c.angle)}°`;
+      if (c.diagonal_angle !== null) {
+        text += `, ${hund(Math.abs(c.angle - c.diagonal_angle))}° from its diagonal's ${hund(c.diagonal_angle)}°`;
+      }
+      flag("measure_closing_angle", "info", text, subject);
+    } else if (c.status === "out_of_square") {
+      flag("measure_corner_angle", "warn", `corner ${c.name} is ${hund(c.angle)}°, not square (diagonal ` +
+        `${ftin(c.diagonal)}, ${ftin2(Math.abs(c.difference_mm))} from square)`, subject);
+    }
+  });
+
+  // Check diagonals.
+  const diagonals = [];
+  list(data, "check_diagonals").forEach((c, i) => {
+    const ends = [];
+    for (const side of ["from", "to"]) {
+      const p = c[side];
+      const end = p && p.end !== undefined ? p.end : "start";
+      if (!p || typeof p !== "object" || !(String(p.wall) in L) || (end !== "start" && end !== "end")) {
+        throw new MeasureError(`check diagonal ${i + 1}: ${side} is {wall, end: start | end, distance}`);
+      }
+      const dist = len(p.distance || "0", `check diagonal ${i + 1} ${side} distance`);
+      if (dist.lt(0) || dist.gt(L[String(p.wall)])) throw new MeasureError(`check diagonal ${i + 1}: ${side} lies off wall ${p.wall}`);
+      ends.push({ wall: String(p.wall), end, distance: dist });
+    }
+    const [expected, sens] = measureDiagonal(ends[0], ends[1], frames, Lf, order);
+    const reading = opt(c.reading, `check diagonal ${i + 1} reading`);
+    const diff = reading === null ? null : reading.num() - expected;
+    diagonals.push({ a: ends[0], b: ends[1], name: `${pointName(ends[0])} → ${pointName(ends[1])}`, reading,
+      expected_mm: expected, difference_mm: diff, grade: diff === null ? null : grade(diff), sensitivity: sens });
+  });
+  for (const dg of diagonals) {
+    if (dg.grade === null) continue;
+    const wallsIn = order.filter((w) => dg.sensitivity[w] > 1e-9);
+    const text = `check diagonal ${dg.name}: read ${ftin(dg.reading)}, expected ${ftinFloat(dg.expected_mm)}, ` +
+      `${ftin2(Math.abs(dg.difference_mm))} off`;
+    if (dg.grade === "warn") flag("measure_diagonal", "warn", `${text}: check ${wallsIn.join(" or ")}`, dg.name);
+    else if (dg.grade === "fail") flag("measure_diagonal", "fail", `${text}: doesn't agree: re-measure`, dg.name);
+  }
+  if (closure && closure.grade !== "pass") {
+    const said = `closure: the walls end ${ftin2(closure.gap_mm)} from W1's start`;
+    flag("measure_closure", closure.grade, said + (closure.grade === "fail" ? ": doesn't agree: re-measure" :
+      `: check ${order.join(", ")}`), "closure");
+  }
+
+  // Walls verified (v1.40: a passing closure verifies the last wall only).
+  const verified = Object.fromEntries(order.map((w) => [w, false]));
+  for (const dg of diagonals) {
+    if (dg.grade === "pass") for (const w of order) if (dg.sensitivity[w] >= VERIFY) verified[w] = true;
+  }
+  if (closure && closure.grade === "pass") verified[order[order.length - 1]] = true;
+  const suggestions = {};
+  order.forEach((w, k) => {
+    if (verified[w]) return;
+    const s = suggest(k, order, frames, Lf, L);
+    let text;
+    if (s) {
+      suggestions[w] = s;
+      text = `${w} isn't verified: take a diagonal ${s.name} (it moves ${s.sensitivity.toFixed(2)} per unit of ${w})`;
+    } else text = `${w} isn't verified: a room of one wall has no diagonal to take`;
+    flag("measure_wall_unverified", "warn", text, w);
+  });
+
+  // Ceiling readings.
+  const readings = [];
+  list(data, "ceiling_readings").forEach((r, i) => {
+    const where = `ceiling reading ${i + 1}`;
+    const wall = wallOf(r, L, where);
+    const t = len(r.offset ?? "0", `${where} offset`);
+    const offset = fromSide(r, "offset", where) === "right" ? L[wall].sub(t) : t;
+    readings.push({ wall, offset, height: len(r.height, `${where} height`), index: i });
+  });
+  readings.sort((x, y) => (order.indexOf(x.wall) - order.indexOf(y.wall)) || x.offset.cmp(y.offset));
+  const ceiling = { readings, walls: {}, room: null };
+  for (const w of order) {
+    const rs = readings.filter((r) => r.wall === w);
+    if (!rs.length) continue;
+    const low = fmin(rs.map((r) => r.height)), high = fmax(rs.map((r) => r.height));
+    ceiling.walls[w] = { lowest: low, variation: high.sub(low) };
+    if (high.sub(low).gt(CEILING_VARY)) flag("measure_ceiling_varies", "warn", `ceiling varies ${ftin(high.sub(low))} along ${w}: plan a top scribe`, w);
+  }
+  if (readings.length) ceiling.room = fmin(readings.map((r) => r.height));
+
+  const items = readItems(len, opt, data, L);
+  itemChecks(items, L, readings, flag);
+  const rank = { fail: 0, warn: 1, info: 2 };
+  flags.sort((x, y) => rank[x.severity] - rank[y.severity]);
+  return { unit, walls, order, closed, corners, diagonals, closure, verified, suggestions, ceiling, items, flags,
+    parsed, frames, failed: flags.filter((f) => f.severity === "fail") };
+}
+
+/** The engine's ftin(Fraction(float)): a float to 1/16" with mm to 0.1. */
+function ftinFloat(v) {
+  const a = Math.abs(v);
+  const six = BigInt(Math.floor(a / 25.4 * 16 + 0.5));
+  const m = Math.floor(a * 10 + 0.5);
+  const sign = v < 0 && six ? "-" : "";
+  return `${sign}${ftinParts(six)} [${sign}${Math.floor(m / 10)}.${m % 10}]`;
+}
+
+function suggest(k, order, frames, Lf, L) {
+  const w = order[k];
+  const pt = (wall, end, distance = new Frac(0n)) => ({ wall, end, distance });
+  let tries;
+  if (k > 0) {
+    const prev = order[k - 1];
+    tries = [[pt(prev, "start"), pt(w, "end")]];
+    if (L[prev].gt(SUGGEST_ALONG)) tries.push([pt(prev, "end", SUGGEST_ALONG), pt(w, "end")]);
+  } else if (order.length > 1) {
+    const next = order[1];
+    tries = [[pt(w, "start"), pt(next, "end")]];
+    if (L[next].gt(SUGGEST_ALONG)) tries.push([pt(w, "start"), pt(next, "start", SUGGEST_ALONG)]);
+  } else return null;
+  let best = null;
+  for (const [a, b] of tries) {
+    const [expected, sens] = measureDiagonal(a, b, frames, Lf, order);
+    const found = { from: a, to: b, name: `${pointName(a)} → ${pointName(b)}`, expected_mm: expected, sensitivity: sens[w] };
+    if (sens[w] >= VERIFY) return found;
+    if (best === null || sens[w] > best.sensitivity) best = found;
+  }
+  return best;
+}
+
+function wallOf(item, L, where) {
+  const wall = String(item.wall);
+  if (!(wall in L)) throw new MeasureError(`${where}: no wall '${item.wall}'`);
+  return wall;
+}
+
+function readItems(len, opt, data, L) {
+  const out = { windows_doors: [], bulkheads: [], service_points: [], floor_high_points: [], marks: [], intents: [] };
+  const offset = (item, key, where, wall, width = new Frac(0n)) => {
+    const typed = len(item[key], `${where} ${key}`);
+    return fromSide(item, key, where) === "right" ? L[wall].sub(typed).sub(width) : typed;
+  };
+  list(data, "windows_doors").forEach((o, i) => {
+    const kind = o.kind;
+    const where = `${kind || "window or door"} ${o.id ?? i + 1}`;
+    if (!OPENING_KINDS.includes(kind)) throw new MeasureError(`${where}: kind is window or door`);
+    const wall = wallOf(o, L, where);
+    const width = len(o.width, `${where} width`);
+    const item = { id: String(o.id ?? i + 1), kind, wall, offset: offset(o, "offset", where, wall, width), width,
+      head: len(o.head, `${where} head`) };
+    if (kind === "window") {
+      item.sill = len(o.sill, `${where} sill`);
+      if (item.sill.ge(item.head)) {
+        throw new MeasureError(`${where}: its sill at ${ftin(item.sill)} is at or above its head at ${ftin(item.head)} (refused at entry)`);
+      }
+    }
+    const casing = opt(o.casing, `${where} casing`);
+    if (casing !== null) item.casing = casing;
+    out.windows_doors.push(item);
+  });
+  list(data, "bulkheads").forEach((b, i) => {
+    const where = `bulkhead ${b.id ?? i + 1}`;
+    const wall = wallOf(b, L, where);
+    const s = offset(b, "start", where, wall), e = offset(b, "end", where, wall);
+    out.bulkheads.push({ id: String(b.id ?? i + 1), wall, start: s.lt(e) ? s : e, end: s.lt(e) ? e : s,
+      depth: len(b.depth, `${where} depth`), underside: len(b.underside, `${where} underside`) });
+  });
+  list(data, "service_points").forEach((sp, i) => {
+    const kind = sp.type;
+    const where = `${kind || "service point"} ${sp.id ?? i + 1}`;
+    if (!SERVICE_TYPES.includes(kind)) throw new MeasureError(`${where}: type is one of ${SERVICE_TYPES.join(", ")}`);
+    const wall = wallOf(sp, L, where);
+    const item = { id: String(sp.id ?? i + 1), type: kind, wall, offset: offset(sp, "offset", where, wall) };
+    if (kind === "floor_register") item.out = len(sp.out, `${where} out`);
+    else item.height = len(sp.height, `${where} height`);
+    out.service_points.push(item);
+  });
+  list(data, "floor_high_points").forEach((f, i) => {
+    const where = `floor high point ${i + 1}`;
+    const wall = wallOf(f, L, where);
+    out.floor_high_points.push({ wall, offset: offset(f, "offset", where, wall), rise: len(f.rise, `${where} rise`) });
+  });
+  list(data, "marks").forEach((m, i) => {
+    const where = `mark ${m.id ?? `m${i + 1}`}`;
+    const wall = wallOf(m, L, where);
+    const item = { id: String(m.id ?? `m${i + 1}`), wall, offset: offset(m, "offset", where, wall) };
+    if (m.label) item.label = String(m.label);
+    out.marks.push(item);
+  });
+  list(data, "intents").forEach((t, i) => {
+    const where = `intent ${t.id ?? i + 1}`;
+    const on = t.on;
+    if (!INTENT_WHATS.includes(t.what)) throw new MeasureError(`${where}: what is one of ${INTENT_WHATS.join(", ")}`);
+    if (!INTENT_BY.includes(t.by ?? "centre")) throw new MeasureError(`${where}: by is centre, left or right`);
+    if (!on || typeof on !== "object" || Object.keys(on).length !== 1 || !INTENT_TARGETS.includes(Object.keys(on)[0])) {
+      throw new MeasureError(`${where}: on is one of {window | door | service_point | mark: id}`);
+    }
+    const [kind, ref] = Object.entries(on)[0];
+    const item = { id: String(t.id ?? i + 1), what: t.what, by: t.by ?? "centre", on: { [kind]: String(ref) } };
+    const off = opt(t.offset, `${where} offset`);
+    if (off !== null && !off.eq(0)) item.offset = off;
+    if (t.note) item.note = String(t.note);
+    out.intents.push(item);
+  });
+  for (const key of ["windows_doors", "bulkheads", "service_points", "marks", "intents"]) {
+    const ids = out[key].map((x) => x.id);
+    if (new Set(ids).size !== ids.length) throw new MeasureError(`${key}: ids must be different`);
+  }
+  return out;
+}
+
+/** The lowest reading over a span: inside it, plus the nearest at or beyond each end. */
+function lowestOver(readings, wall, a, b) {
+  const rs = readings.filter((r) => r.wall === wall);
+  if (!rs.length) return null;
+  const used = rs.filter((r) => r.offset.ge(a) && r.offset.le(b));
+  const before = rs.filter((r) => r.offset.le(a));
+  const after = rs.filter((r) => r.offset.ge(b));
+  if (before.length) used.push(before.reduce((x, y) => (y.offset.gt(x.offset) ? y : x)));
+  if (after.length) used.push(after.reduce((x, y) => (y.offset.lt(x.offset) ? y : x)));
+  return fmin(used.map((r) => r.height));
+}
+
+function itemChecks(items, L, readings, flag) {
+  const offWall = (label, wall, a, b, code = "measure_item_off_wall") => {
+    if (a.lt(TOLERANCE.neg()) || b.gt(L[wall].add(TOLERANCE))) {
+      flag(code, "fail", `${label} runs from ${ftin(a)} to ${ftin(b)} along ${wall}, which is ${ftin(L[wall])} long`, label);
+    }
+  };
+  const openings = items.windows_doors;
+  for (const o of openings) {
+    const label = `${o.kind} ${o.id} (${o.wall})`;
+    offWall(label, o.wall, o.offset, o.offset.add(o.width));
+    const top = lowestOver(readings, o.wall, o.offset, o.offset.add(o.width));
+    if (top !== null && o.head.gt(top.add(TOLERANCE))) {
+      flag("measure_above_ceiling", "fail", `${label}: its head at ${ftin(o.head)} is ${ftin(o.head.sub(top))} above the ${ftin(top)} ceiling over its span`, label);
+    }
+  }
+  openings.forEach((a, k) => {
+    for (const b of openings.slice(k + 1)) {
+      if (a.wall !== b.wall) continue;
+      const hiA = a.offset.add(a.width), hiB = b.offset.add(b.width);
+      const overlap = (hiA.lt(hiB) ? hiA : hiB).sub(a.offset.gt(b.offset) ? a.offset : b.offset);
+      if (overlap.gt(TOLERANCE)) {
+        flag("measure_casings_overlap", "fail", `${a.kind} ${a.id} and ${b.kind} ${b.id} on ${a.wall}: their casings overlap by ${ftin(overlap)}`, `${a.kind} ${a.id}`);
+      }
+    }
+  });
+  for (const b of items.bulkheads) {
+    const label = `bulkhead ${b.id} (${b.wall})`;
+    offWall(label, b.wall, b.start, b.end, "measure_bulkhead_off_wall");
+    const top = lowestOver(readings, b.wall, b.start, b.end);
+    if (top !== null && b.underside.gt(top.add(TOLERANCE))) {
+      flag("measure_above_ceiling", "fail", `${label}: its underside at ${ftin(b.underside)} is ${ftin(b.underside.sub(top))} above the ${ftin(top)} ceiling over its span`, label);
+    }
+  }
+  for (const s of items.service_points) {
+    const label = `${s.type.replaceAll("_", " ")} ${s.id} (${s.wall})`;
+    offWall(label, s.wall, s.offset, s.offset);
+    const out = s.out ?? new Frac(0n), height = s.height ?? new Frac(0n);
+    for (const o of openings) {
+      if (o.kind === "door" && o.wall === s.wall && o.offset.sub(TOLERANCE).le(s.offset) &&
+          s.offset.le(o.offset.add(o.width).add(TOLERANCE)) && out.le(DOOR_BOX_DEPTH) && height.le(o.head)) {
+        flag("measure_service_in_door", "warn", `${label} at ${ftin(s.offset)} is inside the casing box of door ${o.id} ` +
+          `(from ${ftin(o.offset)}, ${ftin(o.width)} wide, head ${ftin(o.head)})`, label);
+      }
+    }
+  }
+  for (const [key, what] of [["floor_high_points", "floor high point"], ["marks", "mark"]]) {
+    items[key].forEach((f, k) => offWall(`${what} ${f.id ?? k + 1} (${f.wall})`, f.wall, f.offset, f.offset));
+  }
+  for (const r of readings) offWall(`ceiling reading at ${ftin(r.offset)} (${r.wall})`, r.wall, r.offset, r.offset);
+  const have = new Set([
+    ...openings.map((o) => `${o.kind}:${o.id}`),
+    ...items.service_points.map((s) => `service_point:${s.id}`),
+    ...items.marks.map((m) => `mark:${m.id}`),
+  ]);
+  for (const t of items.intents) {
+    const [kind, ref] = Object.entries(t.on)[0];
+    if (!have.has(`${kind}:${ref}`)) {
+      flag("measure_target_missing", "warn", `intent ${t.id} (${t.what}): the room has no ${kind.replaceAll("_", " ")} ${ref}`, `intent ${t.id}`);
+    }
+  }
+}
+
+/** The form's computed results for the export (``computed``): the engine compares them with its own. */
+function computed(result) {
+  return {
+    corners: result.corners.map((c) => ({ after: c.after, angle: c.angle / 100 })),
+    check_diagonals: result.diagonals.map((d) => ({ expected_mm: r2(d.expected_mm) })),
+    closure: result.closure ? { gap_mm: r2(result.closure.gap_mm), grade: result.closure.grade } : null,
+    verified: result.verified,
+    flags: result.flags,
+  };
+}
+
+/**
+ * How many more readings would verify every wall (v1.41, shown on the
+ * diagonals and review screens): the fewest of the suggested diagonals that
+ * together verify every unverified wall (each verifies the walls it moves at
+ * least 0.5 per unit of their length), plus one for each wall none of them
+ * can verify. 0 when every wall is verified.
+ */
+function readingsNeeded(result) {
+  const missing = result.order.filter((w) => !result.verified[w]);
+  if (!missing.length) return 0;
+  const Lf = Object.fromEntries(result.walls.map((w) => [w.id, w.length.num()]));
+  const seen = new Set();
+  const covers = [];
+  for (const w of missing) {
+    const s = result.suggestions[w];
+    if (!s || seen.has(s.name)) continue;
+    seen.add(s.name);
+    const [, sens] = measureDiagonal(s.from, s.to, result.frames, Lf, result.order);
+    const set = missing.filter((x) => sens[x] >= VERIFY);
+    if (set.length) covers.push(set);
+  }
+  const coverable = new Set(covers.flat());
+  const alone = missing.filter((w) => !coverable.has(w)).length;
+  const need = [...coverable];
+  if (!need.length) return alone;
+  if (covers.length <= 16) {                         // exact: the smallest subset covering every coverable wall
+    let best = covers.length;
+    for (let mask = 1; mask < 1 << covers.length; mask++) {
+      const n = mask.toString(2).replaceAll("0", "").length;
+      if (n >= best) continue;
+      const got = new Set(covers.filter((_, k) => mask & (1 << k)).flat());
+      if (need.every((w) => got.has(w))) best = n;
+    }
+    return best + alone;
+  }
+  let left = new Set(need), n = 0;                  // greedy past 16 candidates (rooms that big are rare)
+  while (left.size) {
+    const pick = covers.reduce((a, b) => (b.filter((w) => left.has(w)).length > a.filter((w) => left.has(w)).length ? b : a));
+    pick.forEach((w) => left.delete(w));
+    n++;
+  }
+  return n + alone;
+}
+
+/** "n more readings to verify every wall", or "" when none are needed. */
+function readingsText(n) {
+  return n ? `${n} more reading${n === 1 ? "" : "s"} to verify every wall` : "";
+}
+
+return { MeasureError, Frac, MM_PER_INCH, inch, parseInches, parseEntry, r2, mm2, ftin, ftin2, ROOM_TYPES, OPENING_KINDS, SERVICE_TYPES, INTENT_WHATS, INTENT_BY, INTENT_TARGETS, chain, cornerTheta, measureDiagonal, grade, run, suggest, lowestOver, computed, readingsNeeded, readingsText };
+})();
+const S = (() => {
+// The phone's own store (spec §18.2 "S24" "Device and storage"): every
+// measure in IndexedDB, saved on every keystroke; nothing leaves the phone
+// until it is exported. localStorage stands in where IndexedDB can't open
+// (a private window), so the page still works.
+
+const DB = "spw-measure";
+const STORE = "measures";
+const FALLBACK = "spw-measure:";
+
+let opening = null;
+
+function open() {
+  if (opening) return opening;
+  opening = new Promise((resolve) => {
+    let req;
+    try {
+      req = indexedDB.open(DB, 1);
+    } catch {
+      resolve(null);
+      return;
+    }
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "key" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+  return opening;
+}
+
+function tx(db, mode, fn) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, mode);
+    const out = fn(t.objectStore(STORE));
+    t.oncomplete = () => resolve(out && "result" in out ? out.result : undefined);
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  });
+}
+
+async function all() {
+  const db = await open();
+  if (!db) {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith(FALLBACK)) out.push(JSON.parse(localStorage.getItem(k)));
+    }
+    return out;
+  }
+  return tx(db, "readonly", (s) => s.getAll());
+}
+
+async function get(key) {
+  const db = await open();
+  if (!db) return JSON.parse(localStorage.getItem(FALLBACK + key) || "null");
+  return tx(db, "readonly", (s) => s.get(key));
+}
+
+async function put(record) {
+  const db = await open();
+  if (!db) {
+    localStorage.setItem(FALLBACK + record.key, JSON.stringify(record));
+    return;
+  }
+  await tx(db, "readwrite", (s) => s.put(record));
+}
+
+async function remove(key) {
+  const db = await open();
+  if (!db) {
+    localStorage.removeItem(FALLBACK + key);
+    return;
+  }
+  await tx(db, "readwrite", (s) => s.delete(key));
+}
+
+/** Ask the browser to keep the store through storage pressure (best effort). */
+async function persist() {
+  try {
+    return navigator.storage && navigator.storage.persist ? await navigator.storage.persist() : false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A measure's export status for the list (v1.41): "exported <date>" when
+ * nothing has changed since the last export, "changed since export" when it
+ * has, "not exported yet" before the first.
+ */
+function exportStatus(record) {
+  if (!record.exported) return { state: "never", text: "not exported yet" };
+  if ((record.updated || "") > record.exported) return { state: "changed", text: "changed since export" };
+  return { state: "exported", text: `exported ${record.exported.slice(0, 16).replace("T", " ")}` };
+}
+
+return { all, get, put, remove, persist, exportStatus };
+})();
+// The site-measure form (spec §18.2 "S24"): one page on AJ's phone, offline,
+// saving every field as it is typed, exporting a measure file.
+//
+// Flow: header → plan (walls, closed or open) → corners → check diagonals →
+// ceiling readings → each wall's items → review and export. Every step can be
+// reopened from Steps; the checks (measure.js, the engine's copy) re-run on
+// every change. The fields are tables (FIELDS, KINDS) so the screens can be
+// adjusted to the way AJ measures without touching the flow.
+
+
+
+const FORM_VERSION = "0.1.0+4892fe9903";            // the build writes the version and content hash here
+const FRACTIONS = ["1/16", "1/8", "3/16", "1/4", "5/16", "3/8", "7/16", "1/2",
+  "9/16", "5/8", "11/16", "3/4", "13/16", "7/8", "15/16"];
+
+// --- what each item asks (labels as AJ reads them on site) ----------------------------------------------
+
+const off = (key, label) => ({ key, label, type: "length", side: true });
+const len = (key, label, more = {}) => ({ key, label, type: "length", ...more });
+const choice = (key, label, choices, more = {}) => ({ key, label, type: "choice", choices, ...more });
+const text = (key, label, more = {}) => ({ key, label, type: "text", optional: true, ...more });
+
+const KINDS = [
+  { key: "window", list: "windows_doors", label: "Windows", one: "window" },
+  { key: "door", list: "windows_doors", label: "Doors", one: "door" },
+  { key: "bulkhead", list: "bulkheads", label: "Bulkheads", one: "bulkhead" },
+  { key: "service", list: "service_points", label: "Service points", one: "service point" },
+  { key: "floor", list: "floor_high_points", label: "Floor high point", one: "floor high point", max: 1 },
+  { key: "mark", list: "marks", label: "Marks", one: "mark" },
+  { key: "intent", list: "intents", label: "Design intents", one: "intent" },
+];
+const SERVICE_LABELS = { water_hot: "Water hot", water_cold: "Water cold", drain: "Drain", electrical: "Electrical",
+  switch: "Switch", gas: "Gas", vent: "Vent", floor_register: "Floor register" };
+const FIELDS = {
+  window: [off("offset", "Offset to the casing's edge"), len("width", "Width, outside the trim"),
+    len("sill", "Sill, floor to the top of the stool"), len("head", "Head, floor to the top of the head casing"),
+    len("casing", "Casing width", { optional: true })],
+  door: [off("offset", "Offset to the casing's edge"), len("width", "Width, outside the trim"),
+    len("head", "Head, floor to the top of the head casing"), len("casing", "Casing width", { optional: true }),
+    choice("swing.direction", "Swing", ["in", "out"], { optional: true }),
+    choice("swing.hinge", "Hinge side", ["left", "right"], { optional: true })],
+  bulkhead: [off("start", "Start"), off("end", "End"), len("depth", "Depth out from the wall"),
+    len("underside", "Underside, off the floor")],
+  service: [choice("type", "Type", M.SERVICE_TYPES, { labels: SERVICE_LABELS }), off("offset", "Offset (its centre)"),
+    len("height", "Height off the floor", { unless: { type: "floor_register" } }),
+    len("out", "Out from the wall face to its centre", { only: { type: "floor_register" } })],
+  floor: [off("offset", "Offset"), len("rise", "Rise above the lowest floor reading")],
+  mark: [off("offset", "Offset"), text("label", "Label (e.g. range centre)")],
+  intent: [choice("what", "What", M.INTENT_WHATS), choice("by", "By its", M.INTENT_BY),
+    { key: "on", label: "On", type: "target" },
+    len("offset", "Offset along the wall (signed, optional)", { optional: true, signed: true }),
+    text("note", "Note (e.g. client wants sink under the window)")],
+};
+const HEADER = [
+  text("client_name", "Client name (optional)"), text("site_address", "Site address (optional)"),
+  { key: "room_name", label: "Room name", type: "text" },
+  choice("room_type", "Room type", M.ROOM_TYPES), text("measured_by", "Measured by"),
+  { key: "date", label: "Date", type: "date" }, choice("default_unit", "Bare numbers are", ["in", "mm"], { top: true }),
+];
+
+// --- state ------------------------------------------------------------------------------------------------
+
+const app = { rec: null, route: ["home"], result: null, problems: [], live: null, install: null, saving: null,
+  persisted: null };                                  // v1.41: what the browser said to persistent storage
+const today = () => new Date().toISOString().slice(0, 10);
+const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+function blankMeasure() {
+  return {
+    format: "spw-measure", format_version: 1, form_version: FORM_VERSION, default_unit: "in",
+    header: { client_name: "", site_address: "", room_name: "Kitchen", room_type: "kitchen", measured_by: "",
+      date: today() },
+    walls: [{ id: "W1", length: "" }], closed: false, corners: [], check_diagonals: [], ceiling_readings: [],
+    windows_doors: [], bulkheads: [], service_points: [], floor_high_points: [], marks: [], intents: [],
+  };
+}
+
+const m = () => app.rec.measure;
+const unit = () => m().default_unit || "in";
+
+function getPath(obj, path) {
+  return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function setPath(obj, path, value) {
+  const keys = path.split(".");
+  let o = obj;
+  for (const k of keys.slice(0, -1)) o = o[k] ??= {};
+  const last = keys[keys.length - 1];
+  if (value === "" || value === undefined || value === null) delete o[last];
+  else o[last] = value;
+  if (keys.length > 1 && !Object.keys(o).length) delete obj[keys[0]];
+}
+
+// --- checking: complete entries run, incomplete or unreadable ones are listed ------------------------------
+
+const blank = (v) => v === undefined || v === null || (typeof v === "string" && !v.trim());
+
+function fieldError(value, fieldDef) {
+  if (blank(value)) return fieldDef.optional ? null : "needed";
+  try {
+    const mm = M.parseEntry(value, unit(), fieldDef.label);
+    if (!fieldDef.signed && mm.lt(0)) return "can't be negative";
+    return null;
+  } catch (e) {
+    return e.message.replace(/^.*?: can't read/, "can't read");
+  }
+}
+
+const visible = (f, item) => (!f.only || Object.entries(f.only).every(([k, v]) => item[k] === v)) &&
+  (!f.unless || !Object.entries(f.unless).every(([k, v]) => item[k] === v));
+
+function kindOf(list, item) {
+  if (list === "windows_doors") return item.kind;
+  return KINDS.find((k) => k.list === list).key;
+}
+
+function itemLabel(list, item) {
+  if (list === "windows_doors") return `${item.kind} ${item.id}`;
+  if (list === "service_points") return `${(SERVICE_LABELS[item.type] || "service point").toLowerCase()} ${item.id}`;
+  if (list === "bulkheads") return `bulkhead ${item.id}`;
+  if (list === "marks") return `mark ${item.id}${item.label ? ` (${item.label})` : ""}`;
+  if (list === "intents") return `intent ${item.id}: ${item.what || "?"}`;
+  return "floor high point";
+}
+
+/** The measure with only complete, readable entries, and what's left out (which blocks export). */
+function prepare(measure) {
+  const problems = [];
+  const data = JSON.parse(JSON.stringify(measure));
+  const u = measure.default_unit || "in";
+  const ok = (v, opt = false, signed = false) => {
+    if (blank(v)) return opt;
+    try { const mm = M.parseEntry(v, u); return signed || mm.ge(0); } catch { return false; }
+  };
+  const wallIds = new Set();
+  let wallsOk = true;
+  for (const w of data.walls) {
+    wallIds.add(w.id);
+    if (!ok(w.length) || M.parseEntry(w.length, u).le(0)) {
+      wallsOk = false;
+      problems.push({ text: `${w.id}: its length ${blank(w.length) ? "is needed" : "can't be read"}`, route: ["plan"] });
+    }
+  }
+  data.corners = data.corners.filter((c) => {
+    if (blank(c.diagonal)) return false;
+    const good = ok(c.diagonal) && ok(c.leg_a, true) && ok(c.leg_b, true) && wallIds.has(c.after);
+    if (!good) problems.push({ text: `corner after ${c.after}: an entry can't be read`, route: ["corners"] });
+    return good;
+  });
+  data.check_diagonals = data.check_diagonals.filter((d, i) => {
+    const good = d.from && d.to && wallIds.has(d.from.wall) && wallIds.has(d.to.wall) && ok(d.from.distance, true) &&
+      ok(d.to.distance, true) && ok(d.reading, true);
+    if (!good) problems.push({ text: `check diagonal ${i + 1}: an entry can't be read`, route: ["diagonals"] });
+    return good;
+  });
+  data.ceiling_readings = data.ceiling_readings.filter((r) => {
+    if (blank(r.height) && !blank(r.offset)) return false;                  // a station not read yet
+    const good = wallIds.has(r.wall) && ok(r.offset) && ok(r.height);
+    if (!good) problems.push({ text: `ceiling reading on ${r.wall}: an entry can't be read`, route: ["ceiling"] });
+    return good;
+  });
+  for (const k of KINDS) {
+    data[k.list] = (data[k.list] || []).filter((item) => {
+      if (kindOf(k.list, item) !== k.key) return true;
+      const fields = FIELDS[k.key].filter((f) => visible(f, item));
+      const bad = fields.filter((f) => {
+        const v = getPath(item, f.key);
+        if (f.type === "length") return !ok(v, f.optional, f.signed);
+        if (f.type === "choice" || f.type === "target") return !f.optional && blank(v);
+        if (f.type === "text") return !f.optional && blank(v);
+        return false;
+      });
+      let refused = null;
+      if (!bad.length && k.key === "window" && M.parseEntry(item.sill, u).ge(M.parseEntry(item.head, u))) {
+        refused = "its sill is at or above its head (refused at entry)";
+      }
+      if (bad.length || refused) {
+        problems.push({ text: `${item.wall}, ${itemLabel(k.list, item)}: ${refused ||
+          `${bad.map((f) => f.label.split(",")[0].toLowerCase()).join(", ")} ${bad.length > 1 ? "are" : "is"} needed or unreadable`}`,
+        route: ["item", item.wall, k.list, item.uid] });
+        return false;
+      }
+      return true;
+    });
+  }
+  for (const key of ["windows_doors", "bulkheads", "service_points", "floor_high_points", "marks", "intents"]) {
+    for (const it of data[key]) delete it.uid;
+  }
+  let result = null;
+  if (wallsOk && data.walls.length) {
+    try {
+      result = M.run(data);
+    } catch (e) {
+      problems.push({ text: e.message, route: ["review"] });
+    }
+  }
+  return { data, problems, result };
+}
+
+function check() {
+  const { problems, result } = prepare(m());
+  app.problems = problems;
+  app.result = result;
+}
+
+async function changed({ rerender = false } = {}) {
+  app.rec.updated = new Date().toISOString();
+  check();
+  const rec = app.rec;
+  app.saving = S.put(JSON.parse(JSON.stringify(rec))).then(askPersist);
+  if (rerender) render();
+  else {
+    if (app.live) app.live();
+    statusChip();
+    const t2 = document.querySelector(".top .t2");
+    if (t2) t2.textContent = `${m().header.client_name || "No client"} · ${m().header.room_name || "Room"}`;
+  }
+}
+
+// --- DOM helpers --------------------------------------------------------------------------------------------
+
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else if (k === "html") el.innerHTML = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+
+const sevClass = (s) => ({ fail: "fail", warn: "warn", info: "info", pass: "pass" }[s] || "");
+
+function flagList(flags, empty = "No flags.") {
+  if (!flags.length) return h("p", { class: "muted" }, empty);
+  return h("ul", { class: "flags" }, flags.map((f) => h("li", { class: sevClass(f.severity) },
+    h("b", {}, f.severity === "fail" ? "Fail" : f.severity === "warn" ? "Warn" : "Note"), " ", f.text)));
+}
+
+function go(...route) {
+  app.route = route;
+  render();
+  window.scrollTo(0, 0);
+}
+
+// --- fields --------------------------------------------------------------------------------------------------
+
+function lengthField(obj, f, onChange) {
+  const value = getPath(obj, f.key) ?? "";
+  const err = h("div", { class: "err" });
+  const input = h("input", { type: "text", inputmode: unit() === "mm" ? "decimal" : "decimal", autocomplete: "off",
+    autocapitalize: "off", spellcheck: "false", value, placeholder: f.placeholder || (unit() === "in" ? 'inches, e.g. 68 1/4' : "mm"),
+    "aria-label": f.label, "data-key": f.key });
+  const show = () => { const e = fieldError(input.value, f); err.textContent = e && e !== "needed" ? e : ""; };
+  input.addEventListener("input", () => { setPath(obj, f.key, input.value.trim() ? input.value : ""); show(); onChange(); });
+  show();
+  const fr = h("div", { class: "fracs", hidden: true });
+  if (unit() === "in") {
+    for (const t of FRACTIONS) {
+      fr.append(h("button", { type: "button", class: "frac", onpointerdown: (ev) => ev.preventDefault(), onclick: () => {
+        const whole = input.value.trim().replace(/[\s-]+\d+\/\d+$/, "").replace(/^\d+\/\d+$/, "");
+        input.value = whole ? `${whole} ${t}` : t;
+        input.dispatchEvent(new Event("input"));
+      } }, t));
+    }
+    if (f.signed) {
+      fr.append(h("button", { type: "button", class: "frac", onpointerdown: (ev) => ev.preventDefault(), onclick: () => {
+        input.value = input.value.trim().startsWith("-") ? input.value.trim().slice(1) : `-${input.value.trim()}`;
+        input.dispatchEvent(new Event("input"));
+      } }, "±"));
+    }
+    input.addEventListener("focus", () => {
+      document.querySelectorAll(".fracs").forEach((x) => { x.hidden = x !== fr; });
+    });
+    input.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== input) fr.hidden = true; }, 150));
+  }
+  const row = h("div", { class: "row" }, input);
+  if (f.side) {
+    const sideKey = `${f.key}_from`;
+    const btn = h("button", { type: "button", class: "side ghost" });
+    const paint = () => { btn.textContent = obj[sideKey] === "right" ? "from right end" : "from left end";
+      btn.classList.toggle("on", obj[sideKey] === "right"); };
+    btn.addEventListener("click", () => { setPath(obj, sideKey, obj[sideKey] === "right" ? "" : "right"); paint(); onChange(); });
+    paint();
+    row.append(btn);
+  }
+  return h("label", { class: "field" }, h("span", { class: "lab" }, f.label), row, fr, err);
+}
+
+function choiceField(obj, f, onChange) {
+  const box = h("div", { class: "choices" });
+  const paint = () => box.querySelectorAll("button").forEach((b) => b.classList.toggle("on", getPath(obj, f.key) === b.value));
+  for (const c of f.choices) {
+    box.append(h("button", { type: "button", value: c, onclick: () => {
+      const now = getPath(obj, f.key);
+      setPath(obj, f.key, now === c && f.optional ? "" : c);
+      paint();
+      onChange(true);
+    } }, (f.labels && f.labels[c]) || c.replaceAll("_", " ")));
+  }
+  paint();
+  return h("div", { class: "field" }, h("span", { class: "lab" }, f.label + (f.optional ? " (optional)" : "")), box);
+}
+
+function textField(obj, f, onChange) {
+  const input = h("input", { type: f.type === "date" ? "date" : "text", value: getPath(obj, f.key) ?? "",
+    "aria-label": f.label, "data-key": f.key });
+  input.addEventListener("input", () => { setPath(obj, f.key, input.value); onChange(); });
+  return h("label", { class: "field" }, h("span", { class: "lab" }, f.label), input);
+}
+
+/** An intent's target: only what exists on its wall can be picked (refused at entry otherwise). */
+function targetField(item, f, onChange) {
+  const box = h("div", { class: "choices" });
+  const targets = targetsOn(item.wall);
+  const key = (t) => `${t.kind}:${t.id}`;
+  const now = item.on ? `${Object.keys(item.on)[0]}:${Object.values(item.on)[0]}` : "";
+  if (!targets.length) box.append(h("p", { class: "muted" }, "Nothing on this wall to point at yet: add a window, door, service point or mark first."));
+  for (const t of targets) {
+    box.append(h("button", { type: "button", class: key(t) === now ? "on" : "", onclick: () => {
+      item.on = { [t.kind]: t.id };
+      onChange(true);
+    } }, t.label));
+  }
+  return h("div", { class: "field" }, h("span", { class: "lab" }, f.label), box);
+}
+
+function targetsOn(wall) {
+  const out = [];
+  for (const o of m().windows_doors) if (o.wall === wall) out.push({ kind: o.kind, id: o.id, label: `${o.kind} ${o.id}` });
+  // a floor register is on the floor once imported (no wall): not a target, as in Blender's Room dialog
+  for (const s of m().service_points) if (s.wall === wall && s.type !== "floor_register") out.push({ kind: "service_point", id: s.id, label: itemLabel("service_points", s) });
+  for (const k of m().marks) if (k.wall === wall) out.push({ kind: "mark", id: k.id, label: itemLabel("marks", k) });
+  return out;
+}
+
+function field(obj, f, onChange) {
+  if (f.type === "length") return lengthField(obj, f, onChange);
+  if (f.type === "choice") return choiceField(obj, f, onChange);
+  if (f.type === "target") return targetField(obj, f, onChange);
+  return textField(obj, f, onChange);
+}
+
+// --- the plan sketch -----------------------------------------------------------------------------------------
+
+function sketch(result, { diagonals = true } = {}) {
+  if (!result) return h("div", { class: "sketch muted" }, "The plan shows once every wall has a length.");
+  const pts = [];
+  result.frames.forEach(([[x, y], hd], k) => {
+    const L = result.walls[k].length.num();
+    const d = [Math.cos(hd * Math.PI / 180), Math.sin(hd * Math.PI / 180)];
+    pts.push([[x, -y], [x + L * d[0], -(y + L * d[1])]]);
+  });
+  const xs = pts.flat().map((p) => p[0]), ys = pts.flat().map((p) => p[1]);
+  const pad = 40, W = 340, H = 240;
+  const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
+  const k = Math.min((W - 2 * pad) / Math.max(maxx - minx, 1), (H - 2 * pad) / Math.max(maxy - miny, 1));
+  const P = ([x, y]) => [pad + (x - minx) * k, pad + (y - miny) * k];
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("class", "sketch");
+  const add = (tag, attrs, txt) => { const e = document.createElementNS(ns, tag);
+    for (const [a, v] of Object.entries(attrs)) e.setAttribute(a, v); if (txt) e.textContent = txt; svg.append(e); return e; };
+  pts.forEach(([a, b], i) => {
+    const [x1, y1] = P(a), [x2, y2] = P(b);
+    const id = result.walls[i].id;
+    add("line", { x1, y1, x2, y2, class: `wall ${result.verified[id] ? "ok" : ""}` });
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, n = Math.hypot(dx, dy) || 1;
+    add("text", { x: mx - dy / n * 16, y: my + dx / n * 16 + 5, class: "wlab" }, id);
+  });
+  if (diagonals) {
+    for (const d of result.diagonals) {
+      const xy = (p) => { const i = result.order.indexOf(p.wall); const [[x, y], hd] = result.frames[i];
+        const s = p.end === "start" ? p.distance.num() : result.walls[i].length.num() - p.distance.num();
+        return P([x + s * Math.cos(hd * Math.PI / 180), -(y + s * Math.sin(hd * Math.PI / 180))]); };
+      const [x1, y1] = xy(d.a), [x2, y2] = xy(d.b);
+      add("line", { x1, y1, x2, y2, class: `diag ${d.grade || "none"}` });
+    }
+  }
+  const [ox, oy] = P([0, 0]);
+  add("circle", { cx: ox, cy: oy, r: 4, class: "origin" });
+  return svg;
+}
+
+// --- screens -------------------------------------------------------------------------------------------------
+
+const STEPS = [["header", "Header"], ["plan", "Plan: walls"], ["corners", "Corners"], ["diagonals", "Check diagonals"],
+  ["ceiling", "Ceiling readings"], ["walls", "Wall by wall"], ["review", "Review and export"]];
+
+function flow() {
+  const out = [["header"], ["plan"], ["corners"], ["diagonals"], ["ceiling"]];
+  for (const w of m().walls) out.push(["wall", w.id]);
+  out.push(["review"]);
+  return out;
+}
+
+function stepTitle(route) {
+  if (route[0] === "wall") return `Wall ${route[1]}`;
+  if (route[0] === "item") return `Wall ${route[1]}`;
+  return (STEPS.find((s) => s[0] === route[0]) || [0, "Site measure"])[1];
+}
+
+function render() {
+  const root = document.getElementById("app");
+  root.innerHTML = "";
+  app.live = null;
+  const [screen] = app.route;
+  if (screen === "home" || !app.rec) { root.append(home()); return; }
+  check();
+  const bar = h("header", { class: "top" },
+    h("button", { type: "button", class: "ghost", onclick: () => go("home") }, "Measures"),
+    h("div", { class: "title" }, h("div", { class: "t1" }, stepTitle(app.route)),
+      h("div", { class: "t2" }, `${m().header.client_name || "No client"} · ${m().header.room_name || "Room"}`)),
+    h("button", { type: "button", class: "ghost", onclick: () => go("steps") }, "Steps"));
+  const chip = h("button", { type: "button", id: "chip", class: "chip", onclick: () => go("review") });
+  bar.append(chip);
+  root.append(bar);
+  const body = h("main", {});
+  const screens = { header: scrHeader, plan: scrPlan, corners: scrCorners, diagonals: scrDiagonals, ceiling: scrCeiling,
+    walls: scrWalls, wall: scrWall, item: scrItem, review: scrReview, steps: scrSteps };
+  body.append(screens[screen](...app.route.slice(1)));
+  root.append(body);
+  if (screen !== "steps" && screen !== "item") root.append(navBar());
+  statusChip();
+}
+
+/** v1.41: ask once, on the first save, that the browser keep the measures through storage pressure. */
+async function askPersist() {
+  if (app.persisted !== null) return;
+  app.persisted = "asking";
+  try {
+    const already = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : false;
+    app.persisted = already || (await S.persist()) ? "granted" : "refused";
+  } catch {
+    app.persisted = "refused";
+  }
+}
+
+function statusChip() {
+  const chip = document.getElementById("chip");
+  if (!chip) return;
+  const fails = app.result ? app.result.failed.length : 0;
+  const warns = app.result ? app.result.flags.filter((f) => f.severity === "warn").length : 0;
+  const open = app.problems.length;
+  chip.className = `chip ${fails || open ? "fail" : warns ? "warn" : "pass"}`;
+  const parts = [open ? `${open} to finish` : "", fails || warns ? `${fails} fail · ${warns} warn` : ""].filter(Boolean);
+  chip.textContent = parts.length ? parts.join(" · ") : "No issues";
+  chip.setAttribute("aria-label", `${fails} failed, ${warns} warnings, ${open} entries to finish`);
+}
+
+function navBar() {
+  const steps = flow();
+  const here = steps.findIndex((s) => s[0] === app.route[0] && (s[1] === undefined || s[1] === app.route[1]));
+  const prev = here > 0 ? steps[here - 1] : null;
+  const next = here >= 0 && here < steps.length - 1 ? steps[here + 1] : null;
+  return h("nav", { class: "bottom" },
+    h("button", { type: "button", class: "big ghost", disabled: !prev, onclick: () => prev && go(...prev) }, "‹ Back"),
+    h("button", { type: "button", class: "big", disabled: !next, onclick: () => next && go(...next) },
+      next ? `${stepTitle(next)} ›` : "Done"));
+}
+
+function scrSteps() {
+  const box = h("div", {});
+  const steps = h("div", { class: "card" });
+  box.append(steps, about());
+  return scrStepsInto(steps, box);
+}
+
+function about() {
+  const text = { granted: "kept: the browser was asked to keep them and agreed",
+    refused: "the browser didn't promise to keep them under storage pressure (export each measure when done)",
+    asking: "asking the browser…" }[app.persisted] || "not asked yet (it is asked at the first save)";
+  return h("div", { class: "card small" }, h("h3", {}, "About"), h("p", {}, `Form ${FORM_VERSION}.`),
+    h("p", {}, `Measures on this phone: ${text}.`),
+    h("p", { class: "muted" }, "Saved on the phone as you type; nothing leaves it until you export."));
+}
+
+function scrStepsInto(box, outer) {
+  for (const [route, label] of STEPS) {
+    if (route === "walls") {
+      for (const w of m().walls) {
+        box.append(h("button", { type: "button", class: "step", onclick: () => go("wall", w.id) },
+          `Wall ${w.id}`, w.done ? h("span", { class: "tick" }, " ✓ done") : ""));
+      }
+    } else box.append(h("button", { type: "button", class: "step", onclick: () => go(route) }, label));
+  }
+  return outer;
+}
+
+function home() {
+  const box = h("div", { class: "home" });
+  box.append(h("h1", {}, "Site measure"),
+    h("p", { class: "muted" }, "Saved on this phone as you type. Nothing leaves it until you export."),
+    h("button", { type: "button", class: "big", onclick: newMeasure }, "+ New measure"));
+  if (app.install) box.append(h("button", { type: "button", class: "big ghost", onclick: async () => {
+    app.install.prompt(); app.install = null; render(); } }, "Install on this phone"));
+  const standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+  if (!standalone && /iPhone|iPad/.test(navigator.userAgent)) {
+    box.append(h("p", { class: "hint" }, "To use it with no signal: Share → Add to Home Screen, then open it from there once."));
+  }
+  const listBox = h("div", { class: "list" }, h("p", { class: "muted" }, "Loading…"));
+  box.append(h("h2", {}, "Measures on this phone"), listBox);
+  S.all().then((rows) => {
+    listBox.innerHTML = "";
+    rows.sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+    if (!rows.length) listBox.append(h("p", { class: "muted" }, "None yet."));
+    for (const r of rows) {
+      const hd = r.measure.header || {};
+      listBox.append(h("div", { class: "card row2" },
+        h("button", { type: "button", class: "open", onclick: () => openMeasure(r.key) },
+          h("b", {}, hd.client_name || "No client"), h("span", {}, ` · ${hd.room_name || "Room"}`),
+          h("div", { class: "muted" }, `${hd.date || ""} · ${r.measure.walls.length} wall${r.measure.walls.length === 1 ? "" : "s"}`),
+          h("div", { class: `exp ${S.exportStatus(r).state}` }, S.exportStatus(r).text)),
+        h("button", { type: "button", class: "ghost danger", onclick: async () => {
+          if (confirm(`Delete the measure for ${hd.client_name || "no client"} · ${hd.room_name}? It can't be brought back.`)) {
+            await S.remove(r.key); render();
+          } } }, "Delete")));
+    }
+  });
+  box.append(h("p", { class: "muted small" }, `Form ${FORM_VERSION}`));
+  return box;
+}
+
+async function newMeasure() {
+  app.rec = { key: uid(), created: new Date().toISOString(), updated: new Date().toISOString(), measure: blankMeasure() };
+  await S.put(app.rec);
+  go("header");
+}
+
+async function openMeasure(key) {
+  app.rec = await S.get(key);
+  go("header");
+}
+
+function scrHeader() {
+  const box = h("div", { class: "card" });
+  const hd = m().header;
+  for (const f of HEADER) {
+    if (f.key === "default_unit") {
+      box.append(choiceField(m(), f, () => changed({ rerender: true })));
+      continue;
+    }
+    box.append(f.type === "choice" ? choiceField(hd, f, () => changed()) : textField(hd, f, () => changed()));
+  }
+  box.append(h("p", { class: "muted small" }, "Measure to the outside of the trim; every position from the wall's left end as you face it from inside the room."));
+  return box;
+}
+
+function scrPlan() {
+  const box = h("div", {});
+  const sk = h("div", { class: "card" });
+  const list = h("div", { class: "card" }, h("p", { class: "muted small" },
+    "Walls in order, each left to right as you face it from inside the room. Length along the wall face at about counter height."));
+  m().walls.forEach((w) => list.append(lengthField(w, { key: "length", label: `${w.id} length` }, () => changed())));
+  const msg = h("div", { class: "err" });
+  list.append(h("div", { class: "row" },
+    h("button", { type: "button", class: "big ghost", onclick: () => {
+      m().walls.push({ id: `W${m().walls.length + 1}`, length: "" });
+      changed({ rerender: true });
+    } }, "+ Add wall"),
+    h("button", { type: "button", class: "big ghost", disabled: m().walls.length < 2, onclick: () => {
+      const last = m().walls[m().walls.length - 1];
+      const on = onWall(last.id);
+      if (on.length) { msg.textContent = `${last.id} can't be removed: ${on.join(", ")} on it`; return; }
+      m().walls.pop();
+      m().corners = m().corners.filter((c) => c.after !== last.id);
+      changed({ rerender: true });
+    } }, "Remove last wall")), msg);
+  list.append(choiceField(m(), { key: "closed", label: "The room is", choices: ["open", "closed"] }, () => {}));
+  const closedBox = list.lastChild.querySelector(".choices");
+  closedBox.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("on", (m().closed ? "closed" : "open") === b.value);
+    b.onclick = () => { m().closed = b.value === "closed"; if (!m().closed) m().corners = m().corners.filter((c) => c.after !== m().walls[m().walls.length - 1].id); changed({ rerender: true }); };
+  });
+  list.append(h("p", { class: "muted small" }, "Closed: the last wall meets W1. Open: the last wall ends at an open end."));
+  box.append(sk, list);
+  app.live = () => { sk.innerHTML = ""; sk.append(sketch(app.result)); };
+  app.live();
+  return box;
+}
+
+function onWall(id) {
+  const out = [];
+  for (const k of KINDS) for (const it of m()[k.list] || []) if (it.wall === id && kindOf(k.list, it) === k.key) out.push(itemLabel(k.list, it));
+  if (m().ceiling_readings.some((r) => r.wall === id)) out.push("ceiling readings");
+  if (m().check_diagonals.some((d) => d.from?.wall === id || d.to?.wall === id)) out.push("check diagonals");
+  return out;
+}
+
+function cornerPairs() {
+  const ws = m().walls.map((w) => w.id);
+  const n = m().closed ? ws.length : ws.length - 1;
+  return Array.from({ length: Math.max(n, 0) }, (_, k) => [ws[k], ws[(k + 1) % ws.length]]);
+}
+
+function scrCorners() {
+  const box = h("div", {});
+  box.append(h("p", { class: "muted small card" }, "Each corner is 90° unless its diagonal says otherwise. From a point leg a back along the first wall to a point leg b out along the next. Legs 48\" unless you change them."));
+  const lives = [];
+  for (const [a, b] of cornerPairs()) {
+    let target = m().corners.find((x) => x.after === a);
+    if (!target) { target = { after: a }; m().corners.push(target); }
+    const card = h("div", { class: "card" }, h("h3", {}, `Corner ${a}/${b}`));
+    const onCh = () => changed();
+    card.append(lengthField(target, { key: "leg_a", label: `Leg a, back along ${a}`, placeholder: unit() === "in" ? "48" : "1219.2", optional: true }, onCh),
+      lengthField(target, { key: "leg_b", label: `Leg b, out along ${b}`, placeholder: unit() === "in" ? "48" : "1219.2", optional: true }, onCh),
+      lengthField(target, { key: "diagonal", label: "Diagonal (blank: not taken)", optional: true }, onCh));
+    const out = h("div", { class: "result" });
+    card.append(out);
+    lives.push(() => {
+      const r = app.result && app.result.corners.find((x) => x.after === a);
+      out.innerHTML = "";
+      if (!r) { out.append(h("span", { class: "muted" }, "Enter every wall's length first.")); return; }
+      const flags = app.result.flags.filter((f) => f.subject === `corner ${r.name}`);
+      const angle = `${(r.angle / 100).toFixed(2)}°`;
+      const line = r.status === "unchecked" ? "90° assumed (unchecked)" : r.status === "impossible" ? "can't be: re-measure"
+        : r.status === "closing" || (m().closed && r === app.result.corners[app.result.corners.length - 1])
+          ? `${angle}, closes the room` : r.status === "square" ? `90° (within 1/8" of square; ${r.difference_mm.toFixed(2)} mm)`
+            : `${angle}, not square (${r.difference_mm.toFixed(2)} mm from square)`;
+      out.append(h("div", { class: `big-result ${r.status === "square" ? "pass" : r.status === "out_of_square" ? "warn" : r.status === "impossible" ? "fail" : ""}` }, line),
+        flagList(flags.filter((f) => f.code !== "measure_corner_unchecked"), ""));
+    });
+    box.append(card);
+  }
+  if (!cornerPairs().length) box.append(h("p", { class: "card muted" }, "One wall: no corners."));
+  app.live = () => lives.forEach((f) => f());
+  app.live();
+  return box;
+}
+
+function pointEditor(obj, side, label, onCh) {
+  obj[side] ??= { wall: m().walls[0].id, end: "start" };
+  const p = obj[side];
+  const wallBox = choiceField(p, { key: "wall", label: `${label}: wall`, choices: m().walls.map((w) => w.id) }, () => onCh(true));
+  const endBox = choiceField(p, { key: "end", label: `${label}: measured from its`, choices: ["start", "end"] }, () => onCh(true));
+  const dist = lengthField(p, { key: "distance", label: `${label}: distance from that end (0 = the corner)`, optional: true, placeholder: "0" }, () => onCh());
+  return h("div", { class: "pt" }, wallBox, endBox, dist);
+}
+
+function scrDiagonals() {
+  const box = h("div", {});
+  const sk = h("div", { class: "card" });
+  const unv = h("div", { class: "card" });
+  box.append(sk, unv);
+  const lives = [];
+  const list = m().check_diagonals;
+  list.forEach((d, i) => {
+    const card = h("div", { class: "card" }, h("h3", {}, `Check diagonal ${i + 1}`));
+    const onCh = (re) => changed({ rerender: !!re });
+    card.append(pointEditor(d, "from", "From", onCh), pointEditor(d, "to", "To", onCh),
+      lengthField(d, { key: "reading", label: "Reading", optional: true }, () => changed()));
+    const out = h("div", { class: "result" });
+    card.append(out, h("button", { type: "button", class: "ghost danger", onclick: () => { list.splice(i, 1); changed({ rerender: true }); } }, "Delete diagonal"));
+    lives.push(() => {
+      out.innerHTML = "";
+      if (!app.result) { out.append(h("span", { class: "muted" }, "Enter every wall's length first.")); return; }
+      const valid = prepare(m()).data.check_diagonals;
+      const k = valid.findIndex((x) => JSON.stringify(x) === JSON.stringify(d));
+      const r = app.result.diagonals[k];
+      if (!r) { out.append(h("span", { class: "err" }, "An entry can't be read.")); return; }
+      out.append(h("div", { class: "muted" }, r.name),
+        h("div", { class: `big-result ${r.grade || ""}` }, `expected ${r.expected_mm.toFixed(2)} mm (${M.ftin2(r.expected_mm)})` +
+          (r.grade ? ` · ${Math.abs(r.difference_mm).toFixed(2)} mm off: ${r.grade}` : "")),
+        h("div", { class: "muted small" }, "moves " + Object.entries(r.sensitivity).filter(([, v]) => v > 1e-9).map(([w, v]) => `${w} ${v.toFixed(2)}`).join(", ")));
+    });
+    box.append(card);
+  });
+  box.append(h("button", { type: "button", class: "big ghost", onclick: () => {
+    list.push({ from: { wall: m().walls[0].id, end: "start" }, to: { wall: m().walls[Math.min(1, m().walls.length - 1)].id, end: "end" } });
+    changed({ rerender: true });
+  } }, "+ Add check diagonal"));
+  app.live = () => {
+    sk.innerHTML = ""; sk.append(sketch(app.result));
+    unv.innerHTML = "";
+    if (!app.result) { unv.append(h("p", { class: "muted" }, "Enter every wall's length first.")); return; }
+    const missing = Object.entries(app.result.verified).filter(([, v]) => !v).map(([w]) => w);
+    if (!missing.length) { unv.append(h("div", { class: "big-result pass" }, "Every wall is verified.")); }
+    else {
+      unv.append(h("h3", {}, `Not verified: ${missing.join(", ")}`),
+        h("div", { class: "big-result warn" }, M.readingsText(M.readingsNeeded(app.result))));
+      const seen = new Set();
+      for (const w of missing) {
+        const s = app.result.suggestions[w];
+        if (!s || seen.has(s.name)) continue;
+        seen.add(s.name);
+        unv.append(h("div", { class: "row2" }, h("span", {}, `${s.name} (verifies ${missing.filter((x) => app.result.suggestions[x]?.name === s.name).join(", ")})`),
+          h("button", { type: "button", class: "ghost", onclick: () => {
+            const txt = (mm) => (mm.eq(0) ? "0" : unit() === "in" ? M.ftin(mm).split(" [")[0].replace(/"$/, "").replace(/(\d+)'-(\d+)/, (_, f, i) => String(Number(f) * 12 + Number(i))) : M.mm2(mm));
+            list.push({ from: { wall: s.from.wall, end: s.from.end, distance: txt(s.from.distance) },
+              to: { wall: s.to.wall, end: s.to.end, distance: txt(s.to.distance) } });
+            changed({ rerender: true });
+          } }, "Take it")));
+      }
+      if (m().closed) unv.append(h("p", { class: "muted small" }, "In a closed room the closure verifies only the last wall; a rectangle takes its two room diagonals."));
+    }
+    if (app.result.closure) {
+      const c = app.result.closure;
+      unv.append(h("div", { class: `big-result ${c.grade}` }, `Closure gap ${c.gap_mm.toFixed(2)} mm: ${c.grade}`));
+    }
+    lives.forEach((f) => f());
+  };
+  app.live();
+  return box;
+}
+
+function scrCeiling() {
+  const box = h("div", {});
+  box.append(h("p", { class: "muted small card" }, "Along each wall at each corner and every 48\". Every reading is kept; the checks use the lowest over each cabinet's span."));
+  const lives = [];
+  for (const w of m().walls) {
+    const card = h("div", { class: "card" }, h("h3", {}, `Wall ${w.id}`));
+    const rs = m().ceiling_readings.filter((r) => r.wall === w.id);
+    rs.forEach((r) => {
+      card.append(h("div", { class: "pair" },
+        lengthField(r, { key: "offset", label: "At", side: true }, () => changed()),
+        lengthField(r, { key: "height", label: "Height" }, () => changed()),
+        h("button", { type: "button", class: "ghost danger x", "aria-label": "Delete reading", onclick: () => {
+          m().ceiling_readings.splice(m().ceiling_readings.indexOf(r), 1); changed({ rerender: true }); } }, "✕")));
+    });
+    card.append(h("div", { class: "row" },
+      h("button", { type: "button", class: "ghost", onclick: () => { m().ceiling_readings.push({ wall: w.id, offset: "", height: "" }); changed({ rerender: true }); } }, "+ Reading"),
+      h("button", { type: "button", class: "ghost", onclick: () => {
+        let L;
+        try { L = M.parseEntry(w.length, unit()); } catch { return; }
+        const have = new Set(rs.map((r) => r.offset));
+        const step = unit() === "in" ? 48 : 1219.2;
+        const total = L.num() / (unit() === "in" ? 25.4 : 1);
+        const stations = [];
+        for (let x = 0; x < total - 1e-6; x += step) stations.push(unit() === "in" ? String(x) : x.toFixed(1).replace(/\.0$/, ""));
+        stations.push(w.length.trim());
+        for (const s of stations) if (!have.has(s)) m().ceiling_readings.push({ wall: w.id, offset: s, height: "" });
+        changed({ rerender: true });
+      } }, `Stations every ${unit() === "in" ? '48"' : "1219.2"}`)));
+    const out = h("div", { class: "result" });
+    card.append(out);
+    lives.push(() => {
+      out.innerHTML = "";
+      const c = app.result && app.result.ceiling.walls[w.id];
+      if (!c) return;
+      out.append(h("div", { class: `big-result ${c.variation.gt(M.inch(new M.Frac(1n, 4n))) ? "warn" : "pass"}` },
+        `lowest ${M.ftin(c.lowest)} · varies ${M.ftin(c.variation)}`));
+      out.append(flagList(app.result.flags.filter((f) => f.code === "measure_ceiling_varies" && f.subject === w.id), ""));
+    });
+    box.append(card);
+  }
+  app.live = () => lives.forEach((f) => f());
+  app.live();
+  return box;
+}
+
+function scrWalls() {
+  return scrSteps();
+}
+
+function scrWall(id) {
+  const w = m().walls.find((x) => x.id === id);
+  if (!w) return h("p", {}, "No such wall.");
+  w.kinds ??= [];
+  const box = h("div", {});
+  box.append(h("div", { class: "card" }, h("div", { class: "muted" }, `${w.id}: ${w.length || "?"} ${unit() === "in" ? "in" : "mm"} long`),
+    h("p", { class: "lab" }, "What does this wall have?"),
+    h("div", { class: "choices" }, KINDS.map((k) => h("button", { type: "button", class: w.kinds.includes(k.key) ? "on" : "", onclick: () => {
+      w.kinds = w.kinds.includes(k.key) ? w.kinds.filter((x) => x !== k.key) : [...w.kinds, k.key];
+      changed({ rerender: true });
+    } }, k.label)))));
+  const lives = [];
+  for (const k of KINDS) {
+    const items = (m()[k.list] || []).filter((it) => it.wall === id && kindOf(k.list, it) === k.key);
+    if (!w.kinds.includes(k.key) && !items.length) continue;
+    const card = h("div", { class: "card" }, h("h3", {}, k.label));
+    for (const it of items) {
+      it.uid ??= uid();
+      const flagBox = h("div", {});
+      card.append(h("button", { type: "button", class: "item", onclick: () => go("item", id, k.list, it.uid) },
+        h("b", {}, itemLabel(k.list, it)), h("span", { class: "muted" }, ` ${summary(k.key, it)}`), flagBox));
+      lives.push(() => { flagBox.innerHTML = ""; flagBox.append(itemFlags(k.list, it)); });
+    }
+    if (!k.max || items.length < k.max) {
+      card.append(h("button", { type: "button", class: "big ghost", onclick: () => {
+        const it = newItem(k, id);
+        m()[k.list].push(it);
+        changed();
+        go("item", id, k.list, it.uid);
+      } }, `+ Add ${k.one}`));
+    }
+    box.append(card);
+  }
+  box.append(h("div", { class: "card" }, h("label", { class: "check" },
+    h("input", { type: "checkbox", checked: !!w.done, onchange: (e) => { w.done = e.target.checked; changed(); } }),
+    ` ${w.id} done`)));
+  app.live = () => lives.forEach((f) => f());
+  app.live();
+  return box;
+}
+
+function summary(kind, it) {
+  const u = unit() === "in" ? '"' : " mm";
+  const at = (k) => (it[k] ? `${it[k]}${u}${it[`${k}_from`] === "right" ? " from right" : ""}` : "?");
+  if (kind === "window" || kind === "door") return `at ${at("offset")}, ${it.width || "?"}${u} wide`;
+  if (kind === "bulkhead") return `${at("start")} to ${at("end")}`;
+  if (kind === "service") return `at ${at("offset")}`;
+  if (kind === "intent") return it.on ? `on ${Object.keys(it.on)[0].replace("_", " ")} ${Object.values(it.on)[0]}` : "";
+  return `at ${at("offset")}`;
+}
+
+function itemFlags(list, it) {
+  if (!app.result) return h("span", {});
+  const label = list === "windows_doors" ? `${it.kind} ${it.id} (${it.wall})` : list === "bulkheads" ? `bulkhead ${it.id} (${it.wall})`
+    : list === "service_points" ? `${(it.type || "").replaceAll("_", " ")} ${it.id} (${it.wall})` : list === "intents" ? `intent ${it.id}` : null;
+  const flags = label ? app.result.flags.filter((f) => f.subject === label) : [];
+  const open = app.problems.filter((p) => p.route[0] === "item" && p.route[3] === it.uid);
+  return h("div", {}, flags.length ? flagList(flags, "") : "", open.map((p) => h("div", { class: "err" }, p.text)));
+}
+
+function nextId(list, prefix = "") {
+  const used = new Set((m()[list] || []).map((x) => x.id));
+  let n = 1;
+  while (used.has(`${prefix}${n}`)) n++;
+  return `${prefix}${n}`;
+}
+
+function newItem(k, wall) {
+  const it = { uid: uid(), wall };
+  if (k.list === "windows_doors") Object.assign(it, { id: nextId("windows_doors"), kind: k.key });
+  else if (k.list === "marks") it.id = nextId("marks", "m");
+  else if (k.list !== "floor_high_points") it.id = nextId(k.list);
+  if (k.key === "intent") it.by = "centre";
+  return it;
+}
+
+function scrItem(wall, list, key) {
+  const it = (m()[list] || []).find((x) => x.uid === key);
+  if (!it) return h("p", {}, "That item was removed.");
+  const k = KINDS.find((x) => x.list === list && x.key === kindOf(list, it));
+  const title = h("h3", {});
+  const box = h("div", { class: "card" }, title);
+  const fields = h("div", {});
+  const paint = () => {
+    title.textContent = `${itemLabel(list, it)} on ${wall}`;
+    fields.innerHTML = "";
+    for (const f of FIELDS[k.key]) if (visible(f, it)) fields.append(field(it, f, (re) => { changed(); if (re) paint(); else title.textContent = `${itemLabel(list, it)} on ${wall}`; }));
+  };
+  paint();
+  const flagBox = h("div", { class: "result" });
+  box.append(fields, flagBox);
+  const msg = h("div", { class: "err" });
+  box.append(h("div", { class: "row" },
+    h("button", { type: "button", class: "big", onclick: () => go("wall", wall) }, "Done"),
+    h("button", { type: "button", class: "big ghost danger", onclick: () => {
+      const kind = list === "windows_doors" ? it.kind : list === "service_points" ? "service_point" : list === "marks" ? "mark" : null;
+      const users = kind ? m().intents.filter((t) => t.on && t.on[kind] === it.id).map((t) => `intent ${t.id}`) : [];
+      if (users.length) { msg.textContent = `${itemLabel(list, it)} can't be removed: ${users.join(", ")} point${users.length === 1 ? "s" : ""} at it`; return; }
+      if (!confirm(`Delete ${itemLabel(list, it)}?`)) return;
+      m()[list].splice(m()[list].indexOf(it), 1);
+      changed();
+      go("wall", wall);
+    } }, "Delete")), msg);
+  app.live = () => { flagBox.innerHTML = ""; flagBox.append(itemFlags(list, it)); };
+  app.live();
+  return box;
+}
+
+function exportData() {
+  const { data, result } = prepare(m());
+  return { ...data, form_version: FORM_VERSION, saved: new Date().toISOString(), computed: M.computed(result) };
+}
+
+const slug = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function fileName(measure) {
+  const job = slug(measure.header.client_name) || "measure";
+  return `${job}-${slug(measure.header.room_name) || "room"}.spwmeasure.json`;
+}
+
+async function share() {
+  const data = exportData();
+  const name = fileName(m());
+  const text = JSON.stringify(data, null, 1) + "\n";
+  const file = new File([text], name, { type: "application/json" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+      return "shared";
+    } catch (e) {
+      if (e.name === "AbortError") return "cancelled";
+    }
+  }
+  download(text, name);
+  return "downloaded";
+}
+
+/** v1.41: the list shows "exported <date>" until the measure changes again. */
+async function markExported() {
+  app.rec.exported = new Date().toISOString();
+  await S.put(JSON.parse(JSON.stringify(app.rec)));
+}
+
+function download(text, name) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const a = h("a", { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+function scrReview() {
+  const box = h("div", {});
+  const r = app.result;
+  const blocking = app.problems;
+  if (blocking.length) {
+    box.append(h("div", { class: "card" }, h("h3", { class: "fail" }, "To finish before export"),
+      h("ul", { class: "flags" }, blocking.map((p) => h("li", { class: "fail" }, h("a", { href: "#", onclick: (e) => { e.preventDefault(); go(...p.route); } }, p.text))))));
+  }
+  if (r) {
+    const corners = r.corners.map((c) => `${c.name} ${(c.angle / 100).toFixed(2)}°${c.status === "unchecked" ? " (unchecked)" : ""}`);
+    const unv = Object.entries(r.verified).filter(([, v]) => !v).map(([w]) => w);
+    box.append(h("div", { class: "card" }, h("h3", {}, "The room"), sketch(r),
+      h("p", {}, `${r.walls.length} walls, ${r.closed ? "closed" : "open"}. Corners: ${corners.join(", ") || "none"}.`),
+      h("p", { class: unv.length ? "warn" : "pass" }, unv.length ? `Not verified: ${unv.join(", ")}. ` +
+        `${M.readingsText(M.readingsNeeded(r))}.` : "Every wall verified."),
+      r.closure ? h("p", { class: r.closure.grade }, `Closure gap ${r.closure.gap_mm.toFixed(2)} mm: ${r.closure.grade}`) : ""));
+    box.append(h("div", { class: "card" }, h("h3", {}, "Checks and flags"), flagList(r.flags, "No flags: every check passes.")));
+  }
+  const status = h("p", { class: "muted" });
+  box.append(h("div", { class: "card" }, h("h3", {}, "Export"),
+    h("p", { class: "muted small" }, `File: ${fileName(m())}. A failed check still exports with its flag; the import shows it again.`),
+    h("button", { type: "button", class: "big", disabled: !!blocking.length || !r, onclick: async () => {
+      status.textContent = "…";
+      const how = await share();
+      if (how !== "cancelled") await markExported();
+      status.textContent = how === "shared" ? "Shared." : how === "downloaded" ? "Downloaded." : "Not sent.";
+    } }, "Share the measure file"),
+    h("button", { type: "button", class: "big ghost", disabled: !!blocking.length || !r, onclick: () => {
+      download(JSON.stringify(exportData(), null, 1) + "\n", fileName(m()));
+      markExported();
+      status.textContent = "Downloaded.";
+    } }, "Download instead"), status));
+  return box;
+}
+
+// --- start -------------------------------------------------------------------------------------------------
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  app.install = e;
+  if (app.route[0] === "home") render();
+});
+
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+window.spwMeasure = { app, prepare, exportData, fileName, go, render, KINDS, FIELDS };
+render();
+</script>
+</body>
+</html>
