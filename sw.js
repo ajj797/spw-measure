@@ -2,7 +2,7 @@
 // cached when the service worker installs, then served from the cache, so the
 // form opens with no signal. A new build has a new CACHE name (the build
 // writes the content hash), which replaces the old cache on activation.
-const CACHE = "spw-measure-0.1.0+262ce8259a";
+const CACHE = "spw-measure-0.1.0+ff08e08b63";
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {

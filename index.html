@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Azx7uE7VDHgmA8kyybVi5JjerO3N0fEIBJZY5gTx58A='; style-src 'sha256-ICVAith1xX6Xa4tymotTKezqfDY+t7UxW1B18rNZwgg='; img-src 'self'; manifest-src 'self'; connect-src 'none'; worker-src 'self'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-lR7XFu8Q+jI+cQ9mLSWcL1USNzAU6VxplordnQPA9tM='; style-src 'sha256-cFxRgspc5Br29ycZP7yWjS5JpWbcot5w8bz3rTj5Bt4='; img-src 'self'; manifest-src 'self'; connect-src 'none'; worker-src 'self'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1b3a57">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -100,6 +100,12 @@ h3.fail { color: var(--fail); }
 .row .frac-pick { flex: 0 0 5.2em; min-height: 52px; font: inherit; font-size: 17px; padding: 0 4px; border: 2px solid var(--line);
   border-radius: 10px; background: #eef3f8; color: var(--brand); }
 .row .sign { flex: 0 0 3em; padding: 0; }
+/* the end-of-readings list: every reading and its state */
+.reading-rows { margin: 8px 0; }
+.reading-row { display: flex; justify-content: space-between; gap: 8px; width: 100%; margin: 4px 0; text-align: left;
+  background: #fff; color: var(--ink); border-color: var(--line); font-size: 16px; }
+.reading-row.pass b { color: var(--pass); } .reading-row.warn b { color: var(--warn); } .reading-row.fail b { color: var(--fail); }
+.reading-row.fail { border-color: var(--fail); }
 </style>
 </head>
 <body>
@@ -913,7 +919,7 @@ return { all, get, put, remove, persist, exportStatus };
 
 
 
-const FORM_VERSION = "0.1.0+262ce8259a";            // the build writes the version and content hash here
+const FORM_VERSION = "0.1.0+ff08e08b63";            // the build writes the version and content hash here
 const FRACTIONS = ["1/16", "1/8", "3/16", "1/4", "5/16", "3/8", "7/16", "1/2",
   "9/16", "5/8", "11/16", "3/4", "13/16", "7/8", "15/16"];             // the fraction dropdown's sixteenths
 
@@ -1705,20 +1711,84 @@ function readingsLine() {
   return app.result ? (M.readingsText(M.readingsNeeded(app.result)) || "Every wall verified, every corner checked.") : "";
 }
 
+/** A card's state for the end-of-readings list: [class, text]. */
+function cardState(c) {
+  const r = app.result;
+  const e = c.entry;
+  if (c.kind === "corner") {
+    const corner = r.corners.find((x) => x.after === c.after);
+    if (!corner || corner.status === "unchecked") return e.skipped ? ["warn", "skipped"] : ["", "not taken yet"];
+    if (corner.status === "impossible") return ["fail", "can't be: re-measure"];
+    return corner.status === "square" ? ["pass", "square"] : ["warn", `${(corner.angle / 100).toFixed(2)}°, not square`];
+  }
+  const valid = prepare(m()).data.check_diagonals;
+  const key = JSON.stringify({ ...e, suggested: undefined, skipped: undefined });
+  const d = r.diagonals[valid.findIndex((x) => JSON.stringify({ ...x, suggested: undefined, skipped: undefined }) === key)];
+  if (!d || d.grade === null) return e.skipped ? ["warn", "skipped"] : ["", "not taken yet"];
+  return [d.grade, `${d.grade}: ${Math.abs(d.difference_mm).toFixed(2)} mm off`];
+}
+
+function cardName(c) {
+  if (c.kind === "corner") return `Corner ${c.after}/${c.next}`;
+  const p = (q) => (blank(q.distance) || String(q.distance).trim() === "0" ? `${q.wall} ${q.end}` : `${q.wall} ${q.distance} from its ${q.end}`);
+  return `${p(c.entry.from)} → ${p(c.entry.to)}`;
+}
+
+/** Suggestions that aren't a card yet (a skipped or failed card already is one). */
+function newSuggestions() {
+  if (!app.result) return 0;
+  const names = new Set();
+  for (const s of Object.values(app.result.suggestions)) {
+    if (!m().check_diagonals.some((d) => samePoints(d, s))) names.add(s.name);
+  }
+  return names.size;
+}
+
+/**
+ * After the last card (AJ, after his first real measure: "Take the suggested
+ * readings" did nothing when the readings it would add were the ones he had
+ * skipped): every reading listed with its state (tap one to go back to it),
+ * and only the buttons that do something: retry the skipped ones, add new
+ * suggestions, or re-measure a failed one.
+ */
 function readingsDone(box, list) {
   const r = app.result;
   const n = M.readingsNeeded(r);
-  const skipped = list.filter((c) => c.entry.skipped).length;
-  box.append(h("div", { class: "card" }, h("h3", {}, n ? readingsLine() : "Every wall verified, every corner checked."),
-    sketch(r),
-    skipped ? h("p", { class: "warn" }, `${skipped} skipped (can't reach).`) : "",
-    r.closure ? h("p", { class: r.closure.grade }, `Closure gap ${r.closure.gap_mm.toFixed(2)} mm: ${r.closure.grade}`) : "",
-    flagList(r.flags.filter((f) => ["measure_diagonal", "measure_corner_angle", "measure_corner_unchecked",
-      "measure_closure", "measure_corner_impossible", "measure_short_leg"].includes(f.code)), ""),
-    n ? h("button", { type: "button", class: "big", onclick: () => { dealSuggestions(); changed(); go("readings"); } },
-      "Take the suggested readings") : "",
-    h("button", { type: "button", class: "big ghost", onclick: () => go("readings", 0) }, "‹ Back to the first reading"),
-    h("button", { type: "button", class: "big ghost", onclick: () => go("custom") }, "Custom diagonal…")));
+  const skipped = list.map((c, i) => [c, i]).filter(([c]) => c.entry.skipped);
+  const failed = list.map((c, i) => [c, i]).filter(([c]) => cardState(c)[0] === "fail");
+  const fresh = newSuggestions();
+  const rows = list.map((c, i) => {
+    const [cls, text] = cardState(c);
+    return h("button", { type: "button", class: `reading-row ${cls}`, onclick: () => go("readings", i) },
+      h("span", {}, `${i + 1}. ${cardName(c)}`), h("b", {}, text));
+  });
+  const card = h("div", { class: "card" }, h("h3", {}, n ? readingsLine() : "Every wall verified, every corner checked."),
+    sketch(r), h("div", { class: "reading-rows" }, rows),
+    r.closure ? h("p", { class: r.closure.grade }, `Closure gap ${r.closure.gap_mm.toFixed(2)} mm: ${r.closure.grade}`) : "");
+  if (skipped.length) {
+    card.append(h("button", { type: "button", class: "big", onclick: () => {
+      for (const [c] of skipped) delete c.entry.skipped;
+      changed();
+      go("readings", skipped[0][1]);
+    } }, `Retry the ${skipped.length} skipped reading${skipped.length === 1 ? "" : "s"}`));
+  }
+  if (fresh) {
+    card.append(h("button", { type: "button", class: skipped.length ? "big ghost" : "big", onclick: () => {
+      const before = cards().length;
+      dealSuggestions();
+      changed();
+      go("readings", before);
+    } }, `Add ${fresh} suggested reading${fresh === 1 ? "" : "s"}`));
+  }
+  if (failed.length) {
+    card.append(h("p", { class: "fail" }, `${failed.length} reading${failed.length === 1 ? "" : "s"} failed: tap it above to re-measure it, or check the wall lengths on Plan.`));
+  }
+  if (n && !skipped.length && !fresh && !failed.length) {
+    card.append(h("p", { class: "muted" }, "Take a Custom diagonal… to verify the rest, or carry on: unverified walls are warnings, not faults."));
+  }
+  card.append(h("button", { type: "button", class: "big ghost", onclick: () => go("custom") }, "Custom diagonal…"),
+    h("p", { class: "muted small" }, "Skipped and unverified readings are warnings: the measure still exports."));
+  box.append(card);
   return box;
 }
 
