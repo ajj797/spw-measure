@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-XGrCIMGXXyz7qVkg/LuO94JwFHZ4dyST2nnBw5d5Kq0='; style-src 'sha256-kCpbIY7Ezw4+TNYBPjuQ06KLbdjTFdIVXEgNoFzUrTA='; img-src 'self'; manifest-src 'self'; connect-src 'none'; worker-src 'self'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Azx7uE7VDHgmA8kyybVi5JjerO3N0fEIBJZY5gTx58A='; style-src 'sha256-ICVAith1xX6Xa4tymotTKezqfDY+t7UxW1B18rNZwgg='; img-src 'self'; manifest-src 'self'; connect-src 'none'; worker-src 'self'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1b3a57">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -50,9 +50,6 @@ body.shot .bottom { position: static; }
   padding-top: 4px; margin-top: 6px; }
 .pair > .field:first-child { grid-column: 1 / -1; } .pair .field { margin: 4px 0; }
 .x { min-height: 52px; margin-bottom: 4px; }
-.fracs[hidden] { display: none; }
-.fracs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
-.frac { min-height: 46px; padding: 2px; font-size: 17px; background: #eef3f8; color: var(--brand); border-color: #9db6cf; }
 .choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .choices button { background: #fff; color: var(--brand); flex: 1 1 auto; }
 .choices button.on { background: var(--brand); color: #fff; }
@@ -99,6 +96,10 @@ h3.fail { color: var(--fail); }
 .legs { border-left: 4px solid #dbe3ec; padding-left: 10px; }
 .modal { position: fixed; inset: 0; z-index: 20; background: #0008; display: flex; align-items: center; padding: 16px; }
 .modal .card { width: 100%; max-width: 520px; margin: 0 auto; }
+/* AJ: the fraction as a small dropdown beside the number (no strip of buttons) */
+.row .frac-pick { flex: 0 0 5.2em; min-height: 52px; font: inherit; font-size: 17px; padding: 0 4px; border: 2px solid var(--line);
+  border-radius: 10px; background: #eef3f8; color: var(--brand); }
+.row .sign { flex: 0 0 3em; padding: 0; }
 </style>
 </head>
 <body>
@@ -912,9 +913,9 @@ return { all, get, put, remove, persist, exportStatus };
 
 
 
-const FORM_VERSION = "0.1.0+aa65a46299";            // the build writes the version and content hash here
+const FORM_VERSION = "0.1.0+262ce8259a";            // the build writes the version and content hash here
 const FRACTIONS = ["1/16", "1/8", "3/16", "1/4", "5/16", "3/8", "7/16", "1/2",
-  "9/16", "5/8", "11/16", "3/4", "13/16", "7/8", "15/16"];
+  "9/16", "5/8", "11/16", "3/4", "13/16", "7/8", "15/16"];             // the fraction dropdown's sixteenths
 
 // --- what each item asks (labels as AJ reads them on site) ----------------------------------------------
 
@@ -1160,27 +1161,30 @@ function lengthField(obj, f, onChange) {
   const show = () => { const e = fieldError(input.value, f); err.textContent = e && e !== "needed" ? e : ""; };
   input.addEventListener("input", () => { setPath(obj, f.key, input.value.trim() ? input.value : ""); show(); onChange(); });
   show();
-  const fr = h("div", { class: "fracs", hidden: true });
+  // AJ (after his first real measure): the whole number (or a decimal) typed, and a fraction from a small
+  // dropdown only when he wants one, instead of a strip of sixteenths taking half the screen.
+  let frac = null;
+  const FRACTION = /^(-?\d+)?[\s-]*(\d+\/\d+)$/;
   if (unit() === "in") {
-    for (const t of FRACTIONS) {
-      fr.append(h("button", { type: "button", class: "frac", onpointerdown: (ev) => ev.preventDefault(), onclick: () => {
-        const whole = input.value.trim().replace(/[\s-]+\d+\/\d+$/, "").replace(/^\d+\/\d+$/, "");
-        input.value = whole ? `${whole} ${t}` : t;
-        input.dispatchEvent(new Event("input"));
-      } }, t));
-    }
-    if (f.signed) {
-      fr.append(h("button", { type: "button", class: "frac", onpointerdown: (ev) => ev.preventDefault(), onclick: () => {
-        input.value = input.value.trim().startsWith("-") ? input.value.trim().slice(1) : `-${input.value.trim()}`;
-        input.dispatchEvent(new Event("input"));
-      } }, "±"));
-    }
-    input.addEventListener("focus", () => {
-      document.querySelectorAll(".fracs").forEach((x) => { x.hidden = x !== fr; });
+    frac = h("select", { class: "frac-pick", "aria-label": `${f.label}: fraction` },
+      h("option", { value: "" }, "+ 0"), ...FRACTIONS.map((t) => h("option", { value: t }, `+ ${t}`)));
+    const sync = () => { const m = FRACTION.exec(input.value.trim()); frac.value = m ? m[2] : ""; };
+    frac.addEventListener("change", () => {
+      const m = FRACTION.exec(input.value.trim());
+      const whole = m ? (m[1] || "") : input.value.trim().replace(/\.\d*$/, "");
+      input.value = frac.value ? (whole ? `${whole} ${frac.value}` : frac.value) : whole;
+      input.dispatchEvent(new Event("input"));
     });
-    input.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== input) fr.hidden = true; }, 150));
+    input.addEventListener("input", sync);
+    sync();
   }
-  const row = h("div", { class: "row" }, input);
+  const row = h("div", { class: "row" }, input, frac);
+  if (f.signed) {
+    row.append(h("button", { type: "button", class: "ghost sign", "aria-label": `${f.label}: change sign`, onclick: () => {
+      input.value = input.value.trim().startsWith("-") ? input.value.trim().slice(1) : `-${input.value.trim()}`;
+      input.dispatchEvent(new Event("input"));
+    } }, "±"));
+  }
   if (f.side) {
     const sideKey = `${f.key}_from`;
     const btn = h("button", { type: "button", class: "side ghost" });
@@ -1190,7 +1194,7 @@ function lengthField(obj, f, onChange) {
     paint();
     row.append(btn);
   }
-  return h("label", { class: "field" }, h("span", { class: "lab" }, f.label), row, fr, err);
+  return h("label", { class: "field" }, h("span", { class: "lab" }, f.label), row, err);
 }
 
 function choiceField(obj, f, onChange) {
